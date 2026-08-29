@@ -30,6 +30,11 @@ BIN = $(BUILD)/$(TARGET).bin
 
 .DEFAULT_GOAL := all
 
+####################################################################
+# Build
+####################################################################
+
+.PHONY: all
 all: $(BIN)  ## Build the firmware (default)
 
 $(BUILD):
@@ -49,29 +54,46 @@ $(ELF): $(OBJS) $(COMMON)/linker.ld
 $(BIN): $(ELF)
 	$(OBJCOPY) -O binary $< $@
 
+####################################################################
+# Board
+####################################################################
+
+.PHONY: flash
 flash: $(BIN)  ## Flash the board with OpenOCD
 	sudo openocd -f interface/stlink.cfg -f target/stm32f7x.cfg \
 	  -c "program $(BIN) 0x08000000 verify reset exit"
 
+.PHONY: reset
 reset:  ## Reset the board without reflashing
 	sudo openocd -f interface/stlink.cfg -f target/stm32f7x.cfg \
 	  -c "init; reset; exit"
 
+####################################################################
+# Inspection
+####################################################################
+
+.PHONY: size
 size: $(ELF)  ## Show flash and RAM usage
 	$(SIZE) $(ELF)
 
+.PHONY: disasm
 disasm: $(ELF)  ## Disassemble the firmware
 	$(OBJDUMP) -d $(ELF)
 
+.PHONY: sections
 sections: $(ELF)  ## List sections and their addresses
 	$(OBJDUMP) -h $(ELF)
 
+####################################################################
+# Housekeeping
+####################################################################
+
+.PHONY: clean
 clean:  ## Remove everything in work/
 	rm -rf $(BUILD)
 
+.PHONY: help
 help:  ## Show this help
 	@echo "$(TARGET) — targets:"
 	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 	  | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
-
-.PHONY: all clean flash reset size disasm sections help
