@@ -1,8 +1,16 @@
+# Everything generated lives in work/: builds, ROM dumps, scratch files
+/work/
+
+# Claude Code settings: permissions granted on this machine only
+.claude/
+
+# Bytecode from the Python tools
+__pycache__/
+
+# Build products, in case one is ever produced outside work/
 *.o
 *.elf
 *.bin
 *.hex
 *.map
 *.d
-build/
-work/

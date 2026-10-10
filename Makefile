@@ -1,49 +1,55 @@
-APPS := $(patsubst %/,%,$(dir $(wildcard [0-9][0-9]-*/Makefile)))
-
-MAKE_APP = $(MAKE) --no-print-directory -C
+# SPDX-License-Identifier: MIT
+# /*!
+# ****************************
+# \file       Makefile
+# \brief      Repository-level targets; everything else goes to firmware/Makefile.
+#
+# \author     Z. BEN-AKKA
+# \version    1.0
+# \date       10/10/2026
+#
+# \details
+#   documentation  HTML documentation in work/doc/html (doxygen)
+#   format         format the C sources (scripts/format_cxx.sh)
+#   Any other target is forwarded, so make 01-blink-flash works from here.
+#
+# \section root_makefile_version_history Version history
+# | Version | Date       | Author      | Description      |
+# |:-------:|:----------:|:------------|:-----------------|
+# | 1.0     | 10/10/2026 | Z. BEN-AKKA | Initial version. |
+# ****************************
+# */
 
 .DEFAULT_GOAL := help
 
-####################################################################
-# Per-application rules, generated from the folders found above
-####################################################################
+# Make the documentation from board perspective
+.PHONY: documentation
+documentation:
+	@rm -rf work/doc
+	@mkdir -p work/doc
+	@doxygen ./scripts/Doxyfile
+	@echo "work/doc/html/index.html ($$(wc -l < work/doc/doxygen.warnings) warning lines in work/doc/doxygen.warnings)"
 
-define app_rules
-.PHONY: $(1)
-$(1): ## Build $(1)
-	$$(MAKE_APP) $(1)
+# Format source files
+.PHONY: format
+format:
+	@bash -c "scripts/format_cxx.sh"
 
-.PHONY: $(1)-flash
-$(1)-flash: ## Build and flash $(1)
-	$$(MAKE_APP) $(1) flash
-
-.PHONY: $(1)-clean
-$(1)-clean: ## Clean $(1)
-	$$(MAKE_APP) $(1) clean
-endef
-
-$(foreach app,$(APPS),$(eval $(call app_rules,$(app))))
-
-####################################################################
-# Across all applications
-####################################################################
-
-.PHONY: all
-all:  ## Build every application
-	@for app in $(APPS); do $(MAKE_APP) $$app || exit 1; done
-
-.PHONY: clean
-clean:  ## Clean every application
-	@for app in $(APPS); do $(MAKE_APP) $$app clean; done
-
-.PHONY: list
-list:  ## List available applications
-	@for app in $(APPS); do echo "  $$app"; done
-
+# The firmware's help, plus the targets above
 .PHONY: help
-help:  ## Show this help
-	@echo "Targets:"
-	@grep -hE '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
-	  | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+help:
+	@$(MAKE) --no-print-directory -C firmware help
 	@echo ""
-	@echo "Applications found: $(APPS)"
+	@echo "Repository:"
+	@echo "  documentation        HTML documentation in work/doc/html (doxygen)"
+	@echo "  format               format the sources (scripts/format_cxx.sh)"
+
+# Any other target: hand it to firmware/Makefile
+%: FORCE
+	@$(MAKE) --no-print-directory -C firmware $@
+
+.PHONY: FORCE
+FORCE:
+
+# Without this, make would try to rebuild this Makefile through the rule above
+Makefile: ;
