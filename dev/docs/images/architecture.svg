@@ -11,7 +11,7 @@
 
   <!-- Board -->
   <rect x="20" y="104" width="680" height="56" rx="10" fill="#eef3fb" stroke="#c9d5e4"/>
-  <text x="360" y="128" text-anchor="middle" fill="#101725" font-weight="700">boards/stm32f7508-dk: board.h, board.c</text>
+  <text x="360" y="128" text-anchor="middle" fill="#101725" font-weight="700">stm32f7508-dk/: board.h, board.c</text>
   <text x="360" y="148" text-anchor="middle" fill="#5a6674">BOARD_LED_LD1, BOARD_UART_VCP, BOARD_LCD_TIMING, LCD and QSPI pins</text>
 
   <!-- Generic drivers -->
@@ -32,7 +32,7 @@
 
   <!-- Registers -->
   <rect x="20" y="272" width="330" height="68" rx="10" fill="#ffffff" stroke="#e3e8ee"/>
-  <text x="185" y="300" text-anchor="middle" fill="#101725" font-weight="700">boards/stm32f7508-dk: mcu.h</text>
+  <text x="185" y="300" text-anchor="middle" fill="#101725" font-weight="700">stm32f7508-dk/: mcu.h</text>
   <text x="185" y="321" text-anchor="middle" fill="#5a6674">registers (RM0385), startup.c, linker/</text>
 
   <rect x="370" y="272" width="330" height="68" rx="10" fill="#101725"/>

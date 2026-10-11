@@ -11,18 +11,18 @@
 # \details
 #   documentation  HTML documentation in work/doc/html (doxygen)
 #   format         format the C sources (dev/scripts/format_cxx.sh)
-#   Any other target goes to boards/$(BOARD)/Makefile, so
+#   Any other target goes to $(BOARD)/Makefile, so
 #   make 01-blink-flash works from here; pick a board with BOARD=<name>.
 #
 # \section root_makefile_version_history Version history
-# | Version | Date       | Author      | Description                                       |
-# |:-------:|:----------:|:------------|:--------------------------------------------------|
-# | 1.0     | 10/10/2026 | Z. BEN-AKKA | Initial version.                                  |
-# | 1.1     | 11/10/2026 | Z. BEN-AKKA | boards/ and dev/ layout; BOARD selects the board. |
+# | Version | Date       | Author      | Description                                      |
+# |:-------:|:----------:|:------------|:-------------------------------------------------|
+# | 1.0     | 10/10/2026 | Z. BEN-AKKA | Initial version.                                 |
+# | 1.1     | 11/10/2026 | Z. BEN-AKKA | dev/ and board folders; BOARD selects the board. |
 # ****************************
 # */
 
-# Board to build for: a folder of boards/
+# Board to build for: a board folder (submodule) at the repository root
 BOARD ?= stm32f7508-dk
 
 .DEFAULT_GOAL := help
@@ -43,17 +43,17 @@ format:
 # The board's help, plus the targets above
 .PHONY: help
 help:
-	@$(MAKE) --no-print-directory -C boards/$(BOARD) help
+	@$(MAKE) --no-print-directory -C $(BOARD) help
 	@echo ""
 	@echo "Repository:"
 	@echo "  documentation        HTML documentation in work/doc/html (doxygen)"
 	@echo "  format               format the sources (dev/scripts/format_cxx.sh)"
 	@echo ""
-	@echo "Board: $(BOARD) (boards/$(BOARD)); another one with BOARD=<name>"
+	@echo "Board: $(BOARD) ($(BOARD)/); another one with BOARD=<name>"
 
 # Any other target: hand it to the board's Makefile
 %: FORCE
-	@$(MAKE) --no-print-directory -C boards/$(BOARD) $@
+	@$(MAKE) --no-print-directory -C $(BOARD) $@
 
 .PHONY: FORCE
 FORCE:

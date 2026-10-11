@@ -32,7 +32,8 @@ The repository has two sides:
     `fb`, `qspi`, `boot`), the hardware they drive is a parameter;
     `defines.h` holds the project-wide return codes.
   - `scripts/`, `tools/`, `docs/`: formatting, documentation, host tools.
-- **`boards/<board>/`**: everything specific to one board, with its own
+- **`stm32f7508-dk/`** (one folder per board, a Git submodule): everything
+  specific to that board, with its own
   `Makefile`.
   - `mcu.h`: registers and bit fields of the microcontroller (RM0385).
   - `board.h`, `board.c`: pins, LCD panel, QSPI flash, and the descriptors
@@ -45,5 +46,5 @@ The repository has two sides:
 make 01-blink            # build one application
 make 01-blink-flash      # build and flash it with the ST-LINK
 make documentation       # this documentation, in work/doc/html
-make BOARD=<name> ...    # build for another folder of boards/
+make BOARD=<name> ...    # build for another board folder
 ```

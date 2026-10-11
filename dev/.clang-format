@@ -2,7 +2,7 @@
 # clang-format style for the C sources (Contributing.md, part B.2), applied to
 # every file under dev/ (clang-format looks in the file's folder and up):
 # 2-space indent, ~100 columns, K&R braces. Applied by dev/scripts/format_cxx.sh.
-# dev/.clang-format and boards/*/.clang-format must stay identical.
+# dev/.clang-format and <board>/.clang-format must stay identical.
 # Options are kept compatible with clang-format 14 (Ubuntu 22.04).
 ---
 Language: Cpp

@@ -13,10 +13,10 @@
   come from the board: mcu.h, and board wiring from board.h.
 
 \section defines_h_version_history Version history
-| Version | Date       | Author      | Description                            |
-|:-------:|:----------:|:------------|:---------------------------------------|
-| 1.0     | 10/10/2026 | Z. BEN-AKKA | Initial version.                       |
-| 1.1     | 11/10/2026 | Z. BEN-AKKA | Registers and wiring moved to boards/. |
+| Version | Date       | Author      | Description                                     |
+|:-------:|:----------:|:------------|:------------------------------------------------|
+| 1.0     | 10/10/2026 | Z. BEN-AKKA | Initial version.                                |
+| 1.1     | 11/10/2026 | Z. BEN-AKKA | Registers and wiring moved to the board folder. |
 ****************************
 */
 

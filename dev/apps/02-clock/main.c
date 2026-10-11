@@ -21,7 +21,7 @@
 | 1.2     | 10/10/2026 | Z. BEN-AKKA | Shared functions moved to common/.                  |
 | 1.3     | 10/10/2026 | Z. BEN-AKKA | Generic drivers, board specifics from common/board. |
 | 1.4     | 11/10/2026 | Z. BEN-AKKA | Board wiring defined in the application.            |
-| 1.5     | 11/10/2026 | Z. BEN-AKKA | Board wiring from boards/stm32f7508-dk.             |
+| 1.5     | 11/10/2026 | Z. BEN-AKKA | Board wiring from stm32f7508-dk/.                   |
 ****************************
 */
 
