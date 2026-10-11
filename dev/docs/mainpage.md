@@ -34,8 +34,8 @@ The repository has two sides:
   - `scripts/`, `tools/`, `docs/`: formatting, documentation, host tools.
 - **`stm32f7508-dk/`** (one folder per board, a Git submodule): everything
   specific to that board, and nothing about the applications.
-  - `board.mk`: CPU flags, board sources and memories (flash, QSPI: linker
-    script, address, programming), included by the root `Makefile`.
+  - `board.mk`: toolchain, board sources, memories (flash, QSPI) and the
+    recipes (compile, link, flash, DFU, reset) called by the root `Makefile`.
   - `mcu.h`: registers and bit fields of the microcontroller (RM0385).
   - `board.h`, `board.c`: pins, LCD panel, QSPI flash, and the descriptors
     passed to the drivers (`BOARD_LED_LD1`, `BOARD_UART_VCP`...).

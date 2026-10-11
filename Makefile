@@ -5,15 +5,16 @@
 # \brief      Build, flash and document the applications of dev/ for a board.
 #
 # \author     Z. BEN-AKKA
-# \version    1.2
+# \version    1.3
 # \date       11/10/2026
 #
 # \details
-#   The only Makefile of the repository. It holds everything about the
-#   applications; the board folder only describes the hardware, in
-#   $(BOARD)/board.mk (CPU flags, board sources, memories). Each application
-#   is declared as one or more images; the rules for every image come from
-#   the IMAGE template.
+#   Says what to build: the applications, their sources, modules and
+#   memories, and the project-wide compiler options. How to build and
+#   program them is the board's: $(BOARD)/board.mk provides the toolchain,
+#   the memories and the recipes (board_compile, board_link, board_flash...)
+#   that the rules below only call. Each application is declared as one or
+#   more images; the rules for every image come from the IMAGE template.
 #     make 01-blink            build one application
 #     make 01-blink-flash      build and flash it with the ST-LINK
 #     make BOARD=<name> ...    build for another board folder
@@ -25,6 +26,7 @@
 # | 1.0     | 10/10/2026 | Z. BEN-AKKA | Initial version.                                            |
 # | 1.1     | 11/10/2026 | Z. BEN-AKKA | dev/ and board folders; BOARD selects the board.            |
 # | 1.2     | 11/10/2026 | Z. BEN-AKKA | Applications and build rules here, the board in board.mk.   |
+# | 1.3     | 11/10/2026 | Z. BEN-AKKA | Recipes come from board.mk; this file only calls them.      |
 # ****************************
 # */
 
@@ -36,36 +38,21 @@
 BOARD     ?= stm32f7508-dk
 BOARD_DIR := $(BOARD)
 
-ifeq ($(wildcard $(BOARD_DIR)/board.mk),)
-$(error $(BOARD_DIR)/board.mk not found: run "git submodule update --init", or set BOARD)
-endif
-include $(BOARD_DIR)/board.mk
-
 DEV      := dev
 APPS_DIR := $(DEV)/apps
 TOOLS    := $(DEV)/tools
 BUILD    := work/build/$(BOARD)
 
+# Project-wide compiler options, added to the board's (CPU, -I for mcu.h and
+# board.h): warnings, optimisation, the drivers, header dependency tracking
+PROJECT_CFLAGS := -Wall -Wextra -O2 -g3 -I$(DEV)/common -MMD -MP
+
+ifeq ($(wildcard $(BOARD_DIR)/board.mk),)
+$(error $(BOARD_DIR)/board.mk not found: run "git submodule update --init", or set BOARD)
+endif
+include $(BOARD_DIR)/board.mk
+
 .DEFAULT_GOAL := help
-
-####################################################################
-# Toolchain
-####################################################################
-
-CC      = $(CROSS)gcc
-OBJCOPY = $(CROSS)objcopy
-SIZE    = $(CROSS)size
-OBJDUMP = $(CROSS)objdump
-
-CFLAGS  = $(BOARD_ARCH)
-CFLAGS += -Wall -Wextra -O2 -g3
-CFLAGS += -ffunction-sections -fdata-sections
-CFLAGS += -nostdlib -ffreestanding
-CFLAGS += $(BOARD_CFLAGS) -I$(DEV)/common # board headers (mcu.h, board.h), then drivers
-CFLAGS += -MMD -MP                        # track headers: editing one rebuilds what uses it
-
-LDFLAGS  = $(BOARD_ARCH)
-LDFLAGS += -nostdlib -Wl,--gc-sections
 
 ####################################################################
 # Applications
@@ -119,13 +106,10 @@ IMAGES := $(foreach a,$(APPS),$($(a)_IMAGES))
 # All sources of image $(1): board sources, its own files, its common modules
 image_srcs = $(BOARD_SRCS) $($(1)_SRCS) $(foreach m,$($(1)_MODULES),$(DEV)/common/$(m)/$(m).c)
 
-# $(1) = image. Linker script, load address and OpenOCD config come from the
-# memory the image lives in, as described by the board.
+# $(1) = image. Every recipe is the board's, given the memory the image lives in.
 define IMAGE
 $(1)_MEMORY   ?= $(BOARD_DEFAULT_MEMORY)
 $(1)_LDSCRIPT  = $$(MEMORY_$$($(1)_MEMORY)_LDSCRIPT)
-$(1)_ADDR      = $$(MEMORY_$$($(1)_MEMORY)_ADDR)
-$(1)_OPENOCD   = $$(MEMORY_$$($(1)_MEMORY)_OPENOCD)
 $(1)_OUT      := $(BUILD)/$(1)
 $(1)_ELF      := $(BUILD)/$(1)/$(1).elf
 $(1)_BIN      := $(BUILD)/$(1)/$(1).bin
@@ -135,11 +119,11 @@ $(BUILD)/$(1):
 	mkdir -p $$@
 
 $$($(1)_ELF): $$($(1)_OBJS) $$($(1)_LDSCRIPT)
-	$$(CC) $$($(1)_OBJS) $$(LDFLAGS) -T $$($(1)_LDSCRIPT) -Wl,-Map=$(BUILD)/$(1)/$(1).map -o $$@
-	$$(SIZE) $$@
+	$$(call board_link,$$@,$$($(1)_OBJS),$$($(1)_MEMORY),$(BUILD)/$(1)/$(1).map)
+	$$(call board_size,$$@)
 
 $$($(1)_BIN): $$($(1)_ELF)
-	$$(OBJCOPY) -O binary $$< $$@
+	$$(call board_bin,$$@,$$<)
 
 -include $$($(1)_OBJS:.o=.d)
 
@@ -148,7 +132,7 @@ $(1): $$($(1)_BIN)
 
 .PHONY: $(1)-flash
 $(1)-flash: $$($(1)_BIN)
-	sudo openocd $$($(1)_OPENOCD) -c "program $$< $$($(1)_ADDR) verify reset exit"
+	$$(call board_flash,$$<,$$($(1)_MEMORY))
 
 .PHONY: $(1)-clean
 $(1)-clean:
@@ -156,28 +140,28 @@ $(1)-clean:
 
 .PHONY: $(1)-size
 $(1)-size: $$($(1)_ELF)
-	$$(SIZE) $$<
+	$$(call board_size,$$<)
 
 .PHONY: $(1)-disasm
 $(1)-disasm: $$($(1)_ELF)
-	$$(OBJDUMP) -d $$<
+	$$(call board_disasm,$$<)
 
 .PHONY: $(1)-sections
 $(1)-sections: $$($(1)_ELF)
-	$$(OBJDUMP) -h $$<
+	$$(call board_sections,$$<)
 
-# Only memories the ST ROM bootloader can reach get a DFU target
+# Only memories the board can program over USB get a DFU target
 ifeq ($$(MEMORY_$$($(1)_MEMORY)_DFU),yes)
 .PHONY: $(1)-dfu
 $(1)-dfu: $$($(1)_BIN)
-	python3 $(TOOLS)/dfu.py --address $$($(1)_ADDR) $$<
+	$$(call board_dfu,$$<,$$($(1)_MEMORY))
 endif
 endef
 
 # $(1) = image, $(2) = source file
 define OBJECT
 $(BUILD)/$(1)/$(patsubst %.c,%.o,$(notdir $(2))): $(2) | $(BUILD)/$(1)
-	$$(CC) $$(CFLAGS) $$($(1)_CFLAGS) -c $$< -o $$@
+	$$(call board_compile,$$@,$$<,$$($(1)_CFLAGS))
 endef
 
 # $(1) = application made of several images, flashed in the order listed
@@ -220,7 +204,7 @@ TAMPERED := $(BUILD)/09-securebootloader-app/tampered.bin
 .PHONY: 09-securebootloader-tamper
 09-securebootloader-tamper: 09-securebootloader
 	python3 $(TOOLS)/tamper.py $(09-securebootloader-app_BIN) $(TAMPERED) 0x000f4240 0x0003d090
-	sudo openocd $(MEMORY_qspi_OPENOCD) -c "program $(TAMPERED) $(MEMORY_qspi_ADDR) verify reset exit"
+	$(call board_flash,$(TAMPERED),qspi)
 
 ####################################################################
 # Everything at once
@@ -239,7 +223,7 @@ list:
 
 .PHONY: reset
 reset:
-	sudo openocd $(BOARD_OPENOCD) -c "init; reset; exit"
+	$(call board_reset)
 
 ####################################################################
 # Repository
