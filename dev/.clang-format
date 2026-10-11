@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT
+# clang-format style for the C sources (Contributing.md, part B.2), applied to
+# every file under dev/ (clang-format looks in the file's folder and up):
+# 2-space indent, ~100 columns, K&R braces. Applied by dev/scripts/format_cxx.sh.
+# dev/.clang-format and boards/*/.clang-format must stay identical.
+# Options are kept compatible with clang-format 14 (Ubuntu 22.04).
+---
+Language: Cpp
+BasedOnStyle: LLVM
+IndentWidth: 2
+ColumnLimit: 100
+UseTab: Never
+
+# K&R: braces on their own line for functions, attached for control flow
+BreakBeforeBraces: Linux
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Empty
+
+# Alignment is the formatter's job, not the author's
+AlignConsecutiveMacros: Consecutive
+AlignTrailingComments: true
+
+# Include order is set by hand (Contributing.md, part B.8)
+SortIncludes: Never
+
+# Version-history tables and register diagrams must stay as written
+ReflowComments: false
