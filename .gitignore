@@ -1,5 +1,8 @@
 # Everything generated lives in work/: builds, ROM dumps, scratch files
-/work/
+/work/*
+!/work/doc_zak/
+/work/doc_zak/*
+!/work/doc_zak/*.md
 
 # Claude Code settings: permissions granted on this machine only
 .claude/
