@@ -5,8 +5,8 @@ The firmware must be built in a temporary raw-echo mode for this check.
 This diagnostic is separate from the line-based HIL protocol.
 Requires pyserial: python -m pip install pyserial
 
-Version: 1.7
-Date: 16/10/2026
+Version: 1.8
+Date: 19/10/2026
 Author: Z. BEN-AKKA
 History:
   1.0  16/10/2026  Initial host-side UART echo check.
@@ -17,6 +17,7 @@ History:
   1.5  16/10/2026  Add T3 framing-error recovery test.
   1.6  16/10/2026  Temporarily run T3 only.
   1.7  16/10/2026  Generate a framing error with a baud mismatch instead of BREAK.
+  1.8  19/10/2026  Wait for baud switches to settle in T3.
 """
 
 import argparse
@@ -28,6 +29,9 @@ try:
 except ImportError:
     print("pyserial is required: python -m pip install pyserial", file=sys.stderr)
     raise SystemExit(2)
+
+# flush() returns once the USB bridge holds the data, not once it is on the wire.
+BAUD_SWITCH_SETTLE_S = 0.05
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +144,10 @@ def test_t3_framing_error(link: serial.Serial, timeout: float) -> bool:
     malformed = b"\x00"
     written = link.write(malformed)
     link.flush()
+    time.sleep(BAUD_SWITCH_SETTLE_S)  # Let the bridge shift the byte out at 9,600 baud.
     link.baudrate = normal_baud
+    time.sleep(BAUD_SWITCH_SETTLE_S)  # Let the bridge apply the restored baud rate.
+    link.reset_input_buffer()  # Drop switch glitches; the firmware defers [FE].
     if written != len(malformed):
         print(f"FAIL T3: wrote {written}/{len(malformed)} malformed bytes", file=sys.stderr)
         return False
