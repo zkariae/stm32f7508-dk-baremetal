@@ -8,7 +8,7 @@ options override them. Test parameters and expected results come from
 plans/uart_rx.yaml.
 Requires pyserial and PyYAML: python -m pip install pyserial pyyaml
 
-Version: 1.10
+Version: 1.11
 Date: 19/10/2026
 Author: Z. BEN-AKKA
 History:
@@ -23,6 +23,7 @@ History:
   1.8  19/10/2026  Wait for baud switches to settle in T3.
   1.9  19/10/2026  Load serial settings, timeouts and delays from bench.yaml.
   1.10 19/10/2026  Load T1-T4 from uart_rx.yaml, add T4 wrong baud, run all tests.
+  1.11 19/10/2026  Show only the description in --help.
 """
 
 import argparse
@@ -326,7 +327,10 @@ TESTS = {
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__.split("\nVersion:")[0],  # Keep the version history out of --help.
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument(
         "port", nargs="?", help="serial port, for example /dev/ttyACM0 or COM5 (default: bench.yaml)"
     )
