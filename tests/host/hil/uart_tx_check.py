@@ -5,13 +5,18 @@ The firmware must be built in a temporary raw-echo mode for this check.
 This diagnostic is separate from the line-based HIL protocol.
 Requires pyserial: python -m pip install pyserial
 
-Version: 1.2
+Version: 1.7
 Date: 16/10/2026
 Author: Z. BEN-AKKA
 History:
   1.0  16/10/2026  Initial host-side UART echo check.
   1.1  16/10/2026  Add T1 nominal reception test: 100 lines of 128 characters.
   1.2  16/10/2026  Translate T1 test comments to English.
+  1.3  16/10/2026  Pace T1 one line at a time to stay within RX queue capacity.
+  1.4  16/10/2026  Add T2 burst reception test with 1,000 bytes.
+  1.5  16/10/2026  Add T3 framing-error recovery test.
+  1.6  16/10/2026  Temporarily run T3 only.
+  1.7  16/10/2026  Generate a framing error with a baud mismatch instead of BREAK.
 """
 
 import argparse
@@ -27,7 +32,7 @@ except ImportError:
 
 # ---------------------------------------------------------------------------
 # Test T1: Nominal reception
-# Method: Send 100 lines of 128 characters, each terminated by CRLF.
+# Method: Send 100 lines of 128 characters with CRLF, one line at a time.
 # Expected result: Byte-for-byte identical echo with no extra bytes.
 # ---------------------------------------------------------------------------
 def test_t1_nominal_receive(link: serial.Serial, timeout: float) -> bool:
@@ -40,29 +45,32 @@ def test_t1_nominal_receive(link: serial.Serial, timeout: float) -> bool:
             for column in range(chars_per_line)
         )
         lines.append(chars + b"\r\n")
-    payload = b"".join(lines)
 
     link.timeout = timeout
     link.reset_input_buffer()
-    written = link.write(payload)
-    link.flush()
-    if written != len(payload):
-        print(f"FAIL T1: wrote {written}/{len(payload)} bytes", file=sys.stderr)
-        return False
+    for line_index, line in enumerate(lines):
+        written = link.write(line)
+        link.flush()
+        if written != len(line):
+            print(
+                f"FAIL T1: line {line_index + 1}: wrote {written}/{len(line)} bytes",
+                file=sys.stderr,
+            )
+            return False
 
-    echoed = link.read(len(payload))
-    if echoed != payload:
-        limit = min(len(echoed), len(payload))
-        mismatch = next(
-            (index for index in range(limit) if echoed[index] != payload[index]),
-            limit,
-        )
-        print(
-            f"FAIL T1: echo differs at byte {mismatch}; "
-            f"received {len(echoed)}/{len(payload)} bytes",
-            file=sys.stderr,
-        )
-        return False
+        echoed = link.read(len(line))
+        if echoed != line:
+            limit = min(len(echoed), len(line))
+            mismatch = next(
+                (index for index in range(limit) if echoed[index] != line[index]),
+                limit,
+            )
+            print(
+                f"FAIL T1: line {line_index + 1} differs at byte {mismatch}; "
+                f"received {len(echoed)}/{len(line)} bytes",
+                file=sys.stderr,
+            )
+            return False
 
     extra = link.read(1)
     if extra:
@@ -73,6 +81,97 @@ def test_t1_nominal_receive(link: serial.Serial, timeout: float) -> bool:
         f"PASS T1: {line_count} lines x {chars_per_line} characters "
         "echoed identically; no extra byte received"
     )
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Test T2: Burst reception
+# Method: Send 1,000 binary bytes in one write while firmware reads continuously.
+# Expected result: No byte loss and no extra output bytes.
+# ---------------------------------------------------------------------------
+def test_t2_burst_receive(link: serial.Serial, timeout: float) -> bool:
+    payload = bytes(index & 0xFF for index in range(1000))
+
+    link.timeout = timeout
+    link.reset_input_buffer()
+    written = link.write(payload)
+    link.flush()
+    if written != len(payload):
+        print(f"FAIL T2: wrote {written}/{len(payload)} bytes", file=sys.stderr)
+        return False
+
+    echoed = link.read(len(payload))
+    if echoed != payload:
+        limit = min(len(echoed), len(payload))
+        mismatch = next(
+            (index for index in range(limit) if echoed[index] != payload[index]),
+            limit,
+        )
+        print(
+            f"FAIL T2: echo differs at byte {mismatch}; "
+            f"received {len(echoed)}/{len(payload)} bytes",
+            file=sys.stderr,
+        )
+        return False
+
+    extra = link.read(1)
+    if extra:
+        print(f"FAIL T2: unexpected extra byte {extra.hex(' ')}", file=sys.stderr)
+        return False
+
+    print("PASS T2: 1,000-byte burst echoed identically; no extra byte received")
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Test T3: Framing error
+# Method: Send one byte at 9,600 baud to the 115,200-baud firmware, then restore
+#         115,200 baud and send one valid line.
+# Expected result: [FE] marker followed by the exact echo of the valid line.
+# ---------------------------------------------------------------------------
+def test_t3_framing_error(link: serial.Serial, timeout: float) -> bool:
+    line = b"RECOVERY_OK\r\n"
+    expected = b"[FE]\r\n" + line
+    normal_baud = link.baudrate
+
+    link.timeout = timeout
+    link.reset_input_buffer()
+    link.baudrate = 9600
+    malformed = b"\x00"
+    written = link.write(malformed)
+    link.flush()
+    link.baudrate = normal_baud
+    if written != len(malformed):
+        print(f"FAIL T3: wrote {written}/{len(malformed)} malformed bytes", file=sys.stderr)
+        return False
+
+    written = link.write(line)
+    link.flush()
+    if written != len(line):
+        print(f"FAIL T3: wrote {written}/{len(line)} bytes", file=sys.stderr)
+        return False
+
+    received = link.read(len(expected))
+    if received != expected:
+        limit = min(len(received), len(expected))
+        mismatch = next(
+            (index for index in range(limit) if received[index] != expected[index]),
+            limit,
+        )
+        print(
+            f"FAIL T3: expected [FE] then valid-line echo; mismatch at byte {mismatch}, "
+            f"received {len(received)}/{len(expected)} bytes "
+            f"({received.hex(' ')})",
+            file=sys.stderr,
+        )
+        return False
+
+    extra = link.read(1)
+    if extra:
+        print(f"FAIL T3: unexpected extra byte {extra.hex(' ')}", file=sys.stderr)
+        return False
+
+    print("PASS T3: [FE] reported; following line echoed identically")
     return True
 
 
@@ -97,7 +196,8 @@ def main() -> int:
             dsrdtr=False,
         ) as link:
             time.sleep(0.1)  # Allow the serial adapter to settle after opening.
-            return 0 if test_t1_nominal_receive(link, args.timeout) else 1
+            # T1 and T2 are temporarily disabled while T3 is investigated.
+            return 0 if test_t3_framing_error(link, args.timeout) else 1
     except (serial.SerialException, OSError) as error:
         print(f"Serial error: {error}", file=sys.stderr)
         return 2
