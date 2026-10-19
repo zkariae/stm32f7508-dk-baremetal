@@ -4,10 +4,11 @@
 The firmware must be built in a temporary raw-echo mode for this check.
 This diagnostic is separate from the line-based HIL protocol.
 Serial settings, timeouts and delays come from config/bench.yaml; command-line
-options override them.
+options override them. Test parameters and expected results come from
+plans/uart_rx.yaml.
 Requires pyserial and PyYAML: python -m pip install pyserial pyyaml
 
-Version: 1.9
+Version: 1.10
 Date: 19/10/2026
 Author: Z. BEN-AKKA
 History:
@@ -21,11 +22,13 @@ History:
   1.7  16/10/2026  Generate a framing error with a baud mismatch instead of BREAK.
   1.8  19/10/2026  Wait for baud switches to settle in T3.
   1.9  19/10/2026  Load serial settings, timeouts and delays from bench.yaml.
+  1.10 19/10/2026  Load T1-T4 from uart_rx.yaml, add T4 wrong baud, run all tests.
 """
 
 import argparse
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 try:
@@ -40,18 +43,39 @@ except ImportError:
     print("PyYAML is required: python -m pip install pyyaml", file=sys.stderr)
     raise SystemExit(2)
 
-DEFAULT_CONFIG = Path(__file__).resolve().parent / "config" / "bench.yaml"
+HIL_DIR = Path(__file__).resolve().parent
+DEFAULT_CONFIG = HIL_DIR / "config" / "bench.yaml"
+DEFAULT_PLAN = HIL_DIR / "plans" / "uart_rx.yaml"
 SUPPORTED_SCHEMA = 1
 PARITIES = {"none": serial.PARITY_NONE, "even": serial.PARITY_EVEN, "odd": serial.PARITY_ODD}
 FLOW_CONTROLS = ("none", "rtscts", "xonxoff")
+MAX_MARKER_LINES = 16  # Bound on marker lines read before the recovery line.
+
+
+class PlanError(Exception):
+    """Invalid or incomplete test plan entry."""
+
+
+@dataclass
+class Bench:
+    """Bench values shared by all tests."""
+
+    timeout: float
+    baud_switch_settle: float
+
+
+def load_yaml(path: Path) -> dict:
+    """Load a YAML file and reject an unsupported schema."""
+    with path.open(encoding="utf-8") as stream:
+        data = yaml.safe_load(stream)
+    if not isinstance(data, dict) or data.get("schema_version") != SUPPORTED_SCHEMA:
+        raise ValueError(f"schema_version must be {SUPPORTED_SCHEMA}")
+    return data
 
 
 def load_bench_config(path: Path) -> dict:
-    """Load bench.yaml and reject an unsupported schema or invalid serial options."""
-    with path.open(encoding="utf-8") as stream:
-        config = yaml.safe_load(stream)
-    if not isinstance(config, dict) or config.get("schema_version") != SUPPORTED_SCHEMA:
-        raise ValueError(f"schema_version must be {SUPPORTED_SCHEMA}")
+    """Load bench.yaml and reject invalid serial options."""
+    config = load_yaml(path)
     link = config["serial"]
     if link["parity"] not in PARITIES:
         raise ValueError(f"serial.parity must be one of {', '.join(PARITIES)}")
@@ -60,23 +84,76 @@ def load_bench_config(path: Path) -> dict:
     return config
 
 
+def load_test_plan(path: Path) -> list:
+    """Load uart_rx.yaml and reject unknown or duplicate test IDs."""
+    tests = load_yaml(path)["tests"]
+    seen = set()
+    for test in tests:
+        test_id = test["id"]
+        if test_id not in TESTS:
+            raise ValueError(f"unknown test id {test_id}; known: {', '.join(TESTS)}")
+        if test_id in seen:
+            raise ValueError(f"duplicate test id {test_id}")
+        seen.add(test_id)
+    return tests
+
+
+def first_mismatch(received: bytes, expected: bytes) -> int:
+    limit = min(len(received), len(expected))
+    return next((index for index in range(limit) if received[index] != expected[index]), limit)
+
+
+def check_no_extra(link: serial.Serial, test_id: str, expected: dict) -> bool:
+    if expected.get("extra_bytes", 0) != 0:
+        raise PlanError(f"{test_id}: only extra_bytes: 0 is supported")
+    extra = link.read(1)
+    if extra:
+        print(f"FAIL {test_id}: unexpected extra byte {extra.hex(' ')}", file=sys.stderr)
+        return False
+    return True
+
+
+def send_at_wrong_baud(link: serial.Serial, payload: bytes, wrong_baud: int, settle: float) -> bool:
+    """Send payload at wrong_baud, then restore the bench baud rate and drop input."""
+    normal_baud = link.baudrate
+    link.reset_input_buffer()
+    link.baudrate = wrong_baud
+    written = link.write(payload)
+    # flush() returns once the USB bridge holds the data, not once it is on the wire.
+    link.flush()
+    time.sleep(settle)  # Let the bridge shift the bytes out at the wrong baud rate.
+    link.baudrate = normal_baud
+    time.sleep(settle)  # Let the bridge apply the restored baud rate.
+    link.reset_input_buffer()  # Drop switch glitches; the firmware defers its markers.
+    return written == len(payload)
+
+
+def wrong_baud_payload(test_id: str, params: dict) -> bytes:
+    payload = bytes(params["payload"]) * params["repeat"]
+    if not payload:
+        raise PlanError(f"{test_id}: payload is empty")
+    return payload
+
+
 # ---------------------------------------------------------------------------
 # Test T1: Nominal reception
-# Method: Send 100 lines of 128 characters with CRLF, one line at a time.
+# Method: Send printable ASCII lines with CRLF, one line at a time.
 # Expected result: Byte-for-byte identical echo with no extra bytes.
 # ---------------------------------------------------------------------------
-def test_t1_nominal_receive(link: serial.Serial, timeout: float) -> bool:
-    line_count = 100
-    chars_per_line = 128
+def test_t1_nominal_receive(link: serial.Serial, test: dict, bench: Bench) -> bool:
+    params, expected = test["params"], test["expected"]
+    if expected["echo"] != "identical" or expected["markers"]:
+        raise PlanError("T1: only an identical echo without markers is supported")
+    terminator = params["terminator"].encode("ascii")
     lines = []
-    for line_index in range(line_count):
+    for line_index in range(params["line_count"]):
         chars = bytes(
-            0x20 + ((line_index * 17 + column) % 95)
-            for column in range(chars_per_line)
+            params["first_char"]
+            + (line_index * params["line_stride"] + column) % params["char_count"]
+            for column in range(params["chars_per_line"])
         )
-        lines.append(chars + b"\r\n")
+        lines.append(chars + terminator)
 
-    link.timeout = timeout
     link.reset_input_buffer()
     for line_index, line in enumerate(lines):
         written = link.write(line)
@@ -90,25 +167,18 @@ def test_t1_nominal_receive(link: serial.Serial, timeout: float) -> bool:
 
         echoed = link.read(len(line))
         if echoed != line:
-            limit = min(len(echoed), len(line))
-            mismatch = next(
-                (index for index in range(limit) if echoed[index] != line[index]),
-                limit,
-            )
             print(
-                f"FAIL T1: line {line_index + 1} differs at byte {mismatch}; "
+                f"FAIL T1: line {line_index + 1} differs at byte {first_mismatch(echoed, line)}; "
                 f"received {len(echoed)}/{len(line)} bytes",
                 file=sys.stderr,
             )
             return False
 
-    extra = link.read(1)
-    if extra:
-        print(f"FAIL T1: unexpected extra byte {extra.hex(' ')}", file=sys.stderr)
+    if not check_no_extra(link, "T1", expected):
         return False
 
     print(
-        f"PASS T1: {line_count} lines x {chars_per_line} characters "
+        f"PASS T1: {len(lines)} lines x {params['chars_per_line']} characters "
         "echoed identically; no extra byte received"
     )
     return True
@@ -116,13 +186,17 @@ def test_t1_nominal_receive(link: serial.Serial, timeout: float) -> bool:
 
 # ---------------------------------------------------------------------------
 # Test T2: Burst reception
-# Method: Send 1,000 binary bytes in one write while firmware reads continuously.
+# Method: Send binary bytes in one write while firmware reads continuously.
 # Expected result: No byte loss and no extra output bytes.
 # ---------------------------------------------------------------------------
-def test_t2_burst_receive(link: serial.Serial, timeout: float) -> bool:
-    payload = bytes(index & 0xFF for index in range(1000))
+def test_t2_burst_receive(link: serial.Serial, test: dict, bench: Bench) -> bool:
+    params, expected = test["params"], test["expected"]
+    if expected["echo"] != "identical" or expected["markers"]:
+        raise PlanError("T2: only an identical echo without markers is supported")
+    if params["pattern"] != "index_mod_256":
+        raise PlanError("T2: only pattern index_mod_256 is supported")
+    payload = bytes(index & 0xFF for index in range(params["byte_count"]))
 
-    link.timeout = timeout
     link.reset_input_buffer()
     written = link.write(payload)
     link.flush()
@@ -132,51 +206,36 @@ def test_t2_burst_receive(link: serial.Serial, timeout: float) -> bool:
 
     echoed = link.read(len(payload))
     if echoed != payload:
-        limit = min(len(echoed), len(payload))
-        mismatch = next(
-            (index for index in range(limit) if echoed[index] != payload[index]),
-            limit,
-        )
         print(
-            f"FAIL T2: echo differs at byte {mismatch}; "
+            f"FAIL T2: echo differs at byte {first_mismatch(echoed, payload)}; "
             f"received {len(echoed)}/{len(payload)} bytes",
             file=sys.stderr,
         )
         return False
 
-    extra = link.read(1)
-    if extra:
-        print(f"FAIL T2: unexpected extra byte {extra.hex(' ')}", file=sys.stderr)
+    if not check_no_extra(link, "T2", expected):
         return False
 
-    print("PASS T2: 1,000-byte burst echoed identically; no extra byte received")
+    print(f"PASS T2: {len(payload):,}-byte burst echoed identically; no extra byte received")
     return True
 
 
 # ---------------------------------------------------------------------------
 # Test T3: Framing error
-# Method: Send one byte at 9,600 baud to the 115,200-baud firmware, then restore
-#         115,200 baud and send one valid line.
+# Method: Send one byte at a wrong baud rate to the firmware, then restore the
+#         bench baud rate and send one valid line.
 # Expected result: [FE] marker followed by the exact echo of the valid line.
 # ---------------------------------------------------------------------------
-def test_t3_framing_error(link: serial.Serial, timeout: float, settle: float) -> bool:
-    line = b"RECOVERY_OK\r\n"
-    expected = b"[FE]\r\n" + line
-    normal_baud = link.baudrate
+def test_t3_framing_error(link: serial.Serial, test: dict, bench: Bench) -> bool:
+    params, expected = test["params"], test["expected"]
+    if expected["then"] != "recovery_line":
+        raise PlanError("T3: only then: recovery_line is supported")
+    malformed = wrong_baud_payload("T3", params)
+    line = params["recovery_line"].encode("ascii")
+    expected_bytes = "".join(expected["markers"]).encode("ascii") + line
 
-    link.timeout = timeout
-    link.reset_input_buffer()
-    link.baudrate = 9600
-    malformed = b"\x00"
-    written = link.write(malformed)
-    link.flush()
-    # flush() returns once the USB bridge holds the data, not once it is on the wire.
-    time.sleep(settle)  # Let the bridge shift the byte out at 9,600 baud.
-    link.baudrate = normal_baud
-    time.sleep(settle)  # Let the bridge apply the restored baud rate.
-    link.reset_input_buffer()  # Drop switch glitches; the firmware defers [FE].
-    if written != len(malformed):
-        print(f"FAIL T3: wrote {written}/{len(malformed)} malformed bytes", file=sys.stderr)
+    if not send_at_wrong_baud(link, malformed, params["wrong_baud"], bench.baud_switch_settle):
+        print(f"FAIL T3: could not write {len(malformed)} malformed bytes", file=sys.stderr)
         return False
 
     written = link.write(line)
@@ -185,28 +244,85 @@ def test_t3_framing_error(link: serial.Serial, timeout: float, settle: float) ->
         print(f"FAIL T3: wrote {written}/{len(line)} bytes", file=sys.stderr)
         return False
 
-    received = link.read(len(expected))
-    if received != expected:
-        limit = min(len(received), len(expected))
-        mismatch = next(
-            (index for index in range(limit) if received[index] != expected[index]),
-            limit,
-        )
+    received = link.read(len(expected_bytes))
+    if received != expected_bytes:
         print(
-            f"FAIL T3: expected [FE] then valid-line echo; mismatch at byte {mismatch}, "
-            f"received {len(received)}/{len(expected)} bytes "
-            f"({received.hex(' ')})",
+            "FAIL T3: expected markers then valid-line echo; "
+            f"mismatch at byte {first_mismatch(received, expected_bytes)}, "
+            f"received {len(received)}/{len(expected_bytes)} bytes ({received.hex(' ')})",
             file=sys.stderr,
         )
         return False
 
-    extra = link.read(1)
-    if extra:
-        print(f"FAIL T3: unexpected extra byte {extra.hex(' ')}", file=sys.stderr)
+    if not check_no_extra(link, "T3", expected):
         return False
 
-    print("PASS T3: [FE] reported; following line echoed identically")
+    names = " ".join(marker.strip() for marker in expected["markers"])
+    print(f"PASS T3: {names} reported; following line echoed identically")
     return True
+
+
+# ---------------------------------------------------------------------------
+# Test T4: Wrong baud rate
+# Method: Send a burst at a wrong baud rate, then restore the bench baud rate
+#         and send one valid line.
+# Expected result: [FE] and/or [NE] markers, then the exact echo of the valid
+#                  line, which proves the firmware is not blocked.
+# ---------------------------------------------------------------------------
+def test_t4_wrong_baud(link: serial.Serial, test: dict, bench: Bench) -> bool:
+    params, expected = test["params"], test["expected"]
+    if expected["then"] != "recovery_line":
+        raise PlanError("T4: only then: recovery_line is supported")
+    payload = wrong_baud_payload("T4", params)
+    line = params["recovery_line"].encode("ascii")
+    allowed = {marker.encode("ascii") for marker in expected["markers_any_of"]}
+    min_markers = expected["min_markers"]
+
+    if not send_at_wrong_baud(link, payload, params["wrong_baud"], bench.baud_switch_settle):
+        print(f"FAIL T4: could not write {len(payload)} bytes at {params['wrong_baud']} baud",
+              file=sys.stderr)
+        return False
+
+    written = link.write(line)
+    link.flush()
+    if written != len(line):
+        print(f"FAIL T4: wrote {written}/{len(line)} bytes", file=sys.stderr)
+        return False
+
+    markers = []
+    while True:
+        received = link.read_until(b"\n")
+        if received == line:
+            break
+        if received not in allowed or len(markers) >= MAX_MARKER_LINES:
+            print(
+                f"FAIL T4: expected markers then valid-line echo; after {len(markers)} "
+                f"marker(s) received {len(received)} bytes ({received.hex(' ')})",
+                file=sys.stderr,
+            )
+            return False
+        markers.append(received)
+
+    if len(markers) < min_markers:
+        print(f"FAIL T4: {len(markers)} marker(s) received, at least {min_markers} expected",
+              file=sys.stderr)
+        return False
+
+    if not check_no_extra(link, "T4", expected):
+        return False
+
+    names = " ".join(marker.decode("ascii").strip() for marker in markers)
+    print(f"PASS T4: {len(payload)} bytes at {params['wrong_baud']} baud reported {names}; "
+          "following line echoed identically")
+    return True
+
+
+TESTS = {
+    "T1": test_t1_nominal_receive,
+    "T2": test_t2_burst_receive,
+    "T3": test_t3_framing_error,
+    "T4": test_t4_wrong_baud,
+}
 
 
 def main() -> int:
@@ -215,10 +331,13 @@ def main() -> int:
         "port", nargs="?", help="serial port, for example /dev/ttyACM0 or COM5 (default: bench.yaml)"
     )
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG, help="bench configuration file")
+    parser.add_argument("--plan", type=Path, default=DEFAULT_PLAN, help="UART RX test plan file")
+    parser.add_argument("--only", nargs="+", metavar="ID", help="run only these test IDs, e.g. T1 T3")
     parser.add_argument("--baud", type=int, help="baud rate (default: bench.yaml)")
     parser.add_argument("--timeout", type=float, help="reply timeout in seconds (default: bench.yaml)")
     args = parser.parse_args()
 
+    source = args.config
     try:
         config = load_bench_config(args.config)
         link_config = config["serial"]
@@ -226,10 +345,19 @@ def main() -> int:
         baud = args.baud or link_config["baudrate"]
         timeout = args.timeout if args.timeout is not None else config["timeouts"]["read"]
         port_open_settle = config["delays"]["port_open_settle"]
-        baud_switch_settle = config["delays"]["baud_switch_settle"]
+        bench = Bench(timeout, config["delays"]["baud_switch_settle"])
+
+        source = args.plan
+        plan = load_test_plan(args.plan)
+        if args.only:
+            planned = [test["id"] for test in plan]
+            unknown = [test_id for test_id in args.only if test_id not in planned]
+            if unknown:
+                raise ValueError(f"--only: {', '.join(unknown)} not in plan ({', '.join(planned)})")
+            plan = [test for test in plan if test["id"] in args.only]
     except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as error:
         detail = f"missing key {error}" if isinstance(error, KeyError) else error
-        print(f"Configuration error in {args.config}: {detail}", file=sys.stderr)
+        print(f"Configuration error in {source}: {detail}", file=sys.stderr)
         return 2
 
     try:
@@ -246,11 +374,26 @@ def main() -> int:
             dsrdtr=False,
         ) as link:
             time.sleep(port_open_settle)  # Allow the serial adapter to settle after opening.
-            # T1 and T2 are temporarily disabled while T3 is investigated.
-            return 0 if test_t3_framing_error(link, timeout, baud_switch_settle) else 1
+            failed = []
+            for test in plan:
+                try:
+                    passed = TESTS[test["id"]](link, test, bench)
+                except (PlanError, KeyError, TypeError, ValueError) as error:
+                    detail = f"missing key {error}" if isinstance(error, KeyError) else error
+                    print(f"Plan error in {args.plan}, test {test['id']}: {detail}",
+                          file=sys.stderr)
+                    return 2
+                if not passed:
+                    failed.append(test["id"])
     except (serial.SerialException, OSError) as error:
         print(f"Serial error: {error}", file=sys.stderr)
         return 2
+
+    if failed:
+        print(f"FAILED: {', '.join(failed)} ({len(plan) - len(failed)}/{len(plan)} passed)")
+        return 1
+    print(f"ALL PASSED: {len(plan)}/{len(plan)}")
+    return 0
 
 
 if __name__ == "__main__":
