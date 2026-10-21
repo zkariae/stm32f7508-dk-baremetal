@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: MIT
 # ****************************
 # \file       tests/host/hil/plans/uart_rx.yaml
-# \brief      UART RX test plan T1 to T4: method, parameters and expected results.
+# \brief      UART RX test plan T1 to T5: method, parameters and expected results.
 #
 # \author     Z. BEN-AKKA
-# \version    1.0
+# \version    1.1
 # \date       19/10/2026
 #
 # \details
@@ -14,9 +14,10 @@
 #   Markers are the firmware diagnostic lines, including their CRLF.
 #
 # \section uart_rx_yaml_version_history Version history
-# | Version | Date       | Author      | Description      |
-# |:-------:|:----------:|:------------|:-----------------|
-# | 1.0     | 19/10/2026 | Z. BEN-AKKA | Initial version. |
+# | Version | Date       | Author      | Description                    |
+# |:-------:|:----------:|:------------|:-------------------------------|
+# | 1.0     | 19/10/2026 | Z. BEN-AKKA | Initial version.               |
+# | 1.1     | 19/10/2026 | Z. BEN-AKKA | Add T5 hardware overrun test.  |
 # ****************************
 
 schema_version: 1
@@ -77,4 +78,25 @@ tests:
       markers_any_of: ["[FE]\r\n", "[NE]\r\n"]
       min_markers: 1
       then: recovery_line      # proves the firmware is not blocked
+      extra_bytes: 0
+
+  - id: T5
+    title: Hardware overrun
+    method: >-
+      Send the trigger line followed at once by a burst of valid bytes. On the
+      trigger, the firmware masks interrupts for mask_ms, so the burst arrives
+      while RDR is not read. Then send a valid line.
+    params:
+      # Never sent by T1 to T4: T1 and T2 only send runs of consecutive codes.
+      trigger_line: "OVR_TEST\r\n"
+      mask_ms: 2
+      # 8 bytes take 0.7 ms at 115200 baud, so all arrive inside the mask.
+      burst: "01234567"
+      recovery_line: "RECOVERY_OK\r\n"
+    expected:
+      # Trigger echo, the burst bytes the firmware kept (at least one byte,
+      # in order), one [ORE], then the exact echo of the recovery line.
+      markers: ["[ORE]\r\n"]
+      burst_loss: true         # bytes received while masked are lost
+      then: recovery_line      # proves reception resumes
       extra_bytes: 0
