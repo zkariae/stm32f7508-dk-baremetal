@@ -8,7 +8,7 @@ options override them. Test parameters and expected results come from
 plans/uart_rx.yaml.
 Requires pyserial and PyYAML: python -m pip install pyserial pyyaml
 
-Version: 1.12
+Version: 1.13
 Date: 21/10/2026
 Author: Z. BEN-AKKA
 History:
@@ -25,6 +25,7 @@ History:
   1.10 19/10/2026  Load T1-T4 from uart_rx.yaml, add T4 wrong baud, run all tests.
   1.11 19/10/2026  Show only the description in --help.
   1.12 21/10/2026  Add T5 hardware overrun test.
+  1.13 21/10/2026  Add T6 RX buffer overflow test.
 """
 
 import argparse
@@ -130,6 +131,13 @@ def send_at_wrong_baud(link: serial.Serial, payload: bytes, wrong_baud: int, set
     return written == len(payload)
 
 
+def pattern_payload(test_id: str, params: dict) -> bytes:
+    """Build byte_count bytes from the named pattern."""
+    if params["pattern"] != "index_mod_256":
+        raise PlanError(f"{test_id}: only pattern index_mod_256 is supported")
+    return bytes(index & 0xFF for index in range(params["byte_count"]))
+
+
 def wrong_baud_payload(test_id: str, params: dict) -> bytes:
     payload = bytes(params["payload"]) * params["repeat"]
     if not payload:
@@ -195,9 +203,7 @@ def test_t2_burst_receive(link: serial.Serial, test: dict, bench: Bench) -> bool
     params, expected = test["params"], test["expected"]
     if expected["echo"] != "identical" or expected["markers"]:
         raise PlanError("T2: only an identical echo without markers is supported")
-    if params["pattern"] != "index_mod_256":
-        raise PlanError("T2: only pattern index_mod_256 is supported")
-    payload = bytes(index & 0xFF for index in range(params["byte_count"]))
+    payload = pattern_payload("T2", params)
 
     link.reset_input_buffer()
     written = link.write(payload)
@@ -391,12 +397,84 @@ def test_t5_overrun(link: serial.Serial, test: dict, bench: Bench) -> bool:
     return True
 
 
+# ---------------------------------------------------------------------------
+# Test T6: RX buffer overflow
+# Method: Send the trigger line and a burst larger than the RX queue in one
+#         write; the firmware stops reading the queue on the trigger, so it
+#         fills up. Read the echo, then send one valid line.
+# Expected result: Trigger echo, the first kept burst bytes, one [FULL], then
+#                  the exact echo of the valid line.
+# ---------------------------------------------------------------------------
+def test_t6_buffer_overflow(link: serial.Serial, test: dict, bench: Bench) -> bool:
+    params, expected = test["params"], test["expected"]
+    if expected["then"] != "recovery_line":
+        raise PlanError("T6: only then: recovery_line is supported")
+    trigger = params["trigger_line"].encode("ascii")
+    payload = pattern_payload("T6", params)
+    line = params["recovery_line"].encode("ascii")
+    marker = "".join(expected["markers"]).encode("ascii")
+    kept = expected["kept"]
+    if not 0 < kept < len(payload):
+        raise PlanError("T6: kept must be between 1 and byte_count - 1")
+
+    link.reset_input_buffer()
+    written = link.write(trigger + payload)
+    link.flush()
+    if written != len(trigger) + len(payload):
+        print(f"FAIL T6: wrote {written}/{len(trigger) + len(payload)} bytes", file=sys.stderr)
+        return False
+
+    echoed = link.read(len(trigger))
+    if echoed != trigger:
+        print(f"FAIL T6: trigger echo differs ({echoed.hex(' ')})", file=sys.stderr)
+        return False
+
+    # The queue keeps the oldest bytes; the firmware echoes them after the pause.
+    echoed = link.read(kept)
+    if echoed != payload[:kept]:
+        print(
+            f"FAIL T6: kept bytes differ at byte {first_mismatch(echoed, payload[:kept])}; "
+            f"received {len(echoed)}/{kept} bytes",
+            file=sys.stderr,
+        )
+        return False
+
+    # The driver drops new bytes until the firmware has read the overflow event.
+    time.sleep(bench.baud_switch_settle)
+    written = link.write(line)
+    link.flush()
+    if written != len(line):
+        print(f"FAIL T6: wrote {written}/{len(line)} bytes", file=sys.stderr)
+        return False
+
+    expected_bytes = marker + line
+    received = link.read(len(expected_bytes))
+    if received != expected_bytes:
+        print(
+            f"FAIL T6: expected {marker!r} then valid-line echo; "
+            f"mismatch at byte {first_mismatch(received, expected_bytes)}, "
+            f"received {len(received)}/{len(expected_bytes)} bytes ({received.hex(' ')})",
+            file=sys.stderr,
+        )
+        return False
+
+    if not check_no_extra(link, "T6", expected):
+        return False
+
+    print(
+        f"PASS T6: {kept}/{len(payload)} bytes kept, {marker.decode('ascii').strip()} "
+        "reported; following line echoed identically"
+    )
+    return True
+
+
 TESTS = {
     "T1": test_t1_nominal_receive,
     "T2": test_t2_burst_receive,
     "T3": test_t3_framing_error,
     "T4": test_t4_wrong_baud,
     "T5": test_t5_overrun,
+    "T6": test_t6_buffer_overflow,
 }
 
 
