@@ -5,21 +5,22 @@
 \brief      Commands to run the UART RX HIL tests.
 
 \author     Z. BEN-AKKA
-\version    1.2
+\version    1.3
 \date       21/10/2026
 
 \details
-  Lists the commands to run the UART RX tests T1 to T6, all together or one
+  Lists the commands to run the UART RX tests T1 to T7, all together or one
   at a time, and the options that override the default files and settings.
   Test definitions are in plans/uart_rx.yaml; bench settings are in
   config/bench.yaml.
 
 \section run_tests_md_version_history Version history
-| Version | Date       | Author      | Description                    |
-|:-------:|:----------:|:------------|:-------------------------------|
-| 1.0     | 19/10/2026 | Z. BEN-AKKA | Initial version.               |
-| 1.1     | 21/10/2026 | Z. BEN-AKKA | Add T5 hardware overrun run.   |
-| 1.2     | 21/10/2026 | Z. BEN-AKKA | Add T6 RX buffer overflow run. |
+| Version | Date       | Author      | Description                                    |
+|:-------:|:----------:|:------------|:-----------------------------------------------|
+| 1.0     | 19/10/2026 | Z. BEN-AKKA | Initial version.                               |
+| 1.1     | 21/10/2026 | Z. BEN-AKKA | Add T5 hardware overrun run.                   |
+| 1.2     | 21/10/2026 | Z. BEN-AKKA | Add T6 RX buffer overflow run.                 |
+| 1.3     | 21/10/2026 | Z. BEN-AKKA | Add T7 run with its prerequisites; port first. |
 ****************************
 -->
 
@@ -37,8 +38,10 @@ make hil-bench-flash                     # flash the raw-echo bench firmware
 ## Run all tests
 
 ```bash
-python3 tests/host/hil/uart_tx_check.py               # T1 to T6, in plan order
+python3 tests/host/hil/uart_tx_check.py               # T1 to T7, in plan order
 ```
+
+T7 prints `CHECK T7: LD1 keeps blinking at 2 Hz (visual)`: check LD1 on the board.
 
 ## Run one test
 
@@ -49,18 +52,25 @@ python3 tests/host/hil/uart_tx_check.py --only T3     # Framing error
 python3 tests/host/hil/uart_tx_check.py --only T4     # Wrong baud rate
 python3 tests/host/hil/uart_tx_check.py --only T5     # Hardware overrun
 python3 tests/host/hil/uart_tx_check.py --only T6     # RX buffer overflow
+python3 tests/host/hil/uart_tx_check.py --only T3 T4 T5 T6 T7   # No interrupt storm
 ```
+
+T7 must run after T3 to T6 in the same run: `--only T7` alone is refused
+(exit code 2).
 
 ## Run a selection
 
 ```bash
 python3 tests/host/hil/uart_tx_check.py --only T3 T4  # runs in plan order
+python3 tests/host/hil/uart_tx_check.py /dev/ttyACM1 --only T3 T4   # port before --only
 ```
+
+`--only` takes every following word as a test ID, so put the port before it.
 
 ## Repeat a run
 
 ```bash
-for i in $(seq 10); do python3 tests/host/hil/uart_tx_check.py; done   # about 14 s per run
+for i in $(seq 10); do python3 tests/host/hil/uart_tx_check.py; done   # about 18 s per run
 ```
 
 ## Options
