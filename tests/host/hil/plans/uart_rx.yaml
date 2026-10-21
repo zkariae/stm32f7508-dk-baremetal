@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: MIT
 # ****************************
 # \file       tests/host/hil/plans/uart_rx.yaml
-# \brief      UART RX test plan T1 to T5: method, parameters and expected results.
+# \brief      UART RX test plan T1 to T6: method, parameters and expected results.
 #
 # \author     Z. BEN-AKKA
-# \version    1.1
-# \date       19/10/2026
+# \version    1.2
+# \date       21/10/2026
 #
 # \details
 #   Describes what each UART RX test sends and expects. The test procedures
@@ -14,10 +14,11 @@
 #   Markers are the firmware diagnostic lines, including their CRLF.
 #
 # \section uart_rx_yaml_version_history Version history
-# | Version | Date       | Author      | Description                    |
-# |:-------:|:----------:|:------------|:-------------------------------|
-# | 1.0     | 19/10/2026 | Z. BEN-AKKA | Initial version.               |
-# | 1.1     | 19/10/2026 | Z. BEN-AKKA | Add T5 hardware overrun test.  |
+# | Version | Date       | Author      | Description                     |
+# |:-------:|:----------:|:------------|:--------------------------------|
+# | 1.0     | 19/10/2026 | Z. BEN-AKKA | Initial version.                |
+# | 1.1     | 19/10/2026 | Z. BEN-AKKA | Add T5 hardware overrun test.   |
+# | 1.2     | 21/10/2026 | Z. BEN-AKKA | Add T6 RX buffer overflow test. |
 # ****************************
 
 schema_version: 1
@@ -98,5 +99,28 @@ tests:
       # in order), one [ORE], then the exact echo of the recovery line.
       markers: ["[ORE]\r\n"]
       burst_loss: true         # bytes received while masked are lost
+      then: recovery_line      # proves reception resumes
+      extra_bytes: 0
+
+  - id: T6
+    title: RX buffer overflow
+    method: >-
+      Send the trigger line followed at once by a burst larger than the RX
+      queue. On the trigger, the firmware stops reading the queue for pause_ms
+      with interrupts enabled, so the queue fills up. Read the echo, then send
+      a valid line.
+    params:
+      # Never sent by T1 to T5: T1 and T2 only send runs of consecutive codes.
+      trigger_line: "FULL_TEST\r\n"
+      pause_ms: 100
+      # 400 bytes take 34.7 ms at 115200 baud, so all arrive inside the pause.
+      byte_count: 400
+      # Byte at index i = i & 0xFF
+      pattern: index_mod_256
+      recovery_line: "RECOVERY_OK\r\n"
+    expected:
+      # UART_RX_BUFFER_SIZE: the queue keeps the oldest bytes and drops the rest.
+      kept: 256                # trigger echo, then the first 256 burst bytes
+      markers: ["[FULL]\r\n"]
       then: recovery_line      # proves reception resumes
       extra_bytes: 0
