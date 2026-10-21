@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: MIT
 # ****************************
 # \file       tests/host/hil/plans/uart_rx.yaml
-# \brief      UART RX test plan T1 to T6: method, parameters and expected results.
+# \brief      UART RX test plan T1 to T7: method, parameters and expected results.
 #
 # \author     Z. BEN-AKKA
-# \version    1.2
+# \version    1.3
 # \date       21/10/2026
 #
 # \details
@@ -19,6 +19,7 @@
 # | 1.0     | 19/10/2026 | Z. BEN-AKKA | Initial version.                |
 # | 1.1     | 19/10/2026 | Z. BEN-AKKA | Add T5 hardware overrun test.   |
 # | 1.2     | 21/10/2026 | Z. BEN-AKKA | Add T6 RX buffer overflow test. |
+# | 1.3     | 21/10/2026 | Z. BEN-AKKA | Add T7 no interrupt storm test. |
 # ****************************
 
 schema_version: 1
@@ -124,3 +125,21 @@ tests:
       markers: ["[FULL]\r\n"]
       then: recovery_line      # proves reception resumes
       extra_bytes: 0
+
+  - id: T7
+    title: No interrupt storm
+    method: >-
+      After the error tests, stay idle, then send valid lines spaced in time.
+      A receive error flag left set would keep the USART interrupt pending,
+      starve the main loop and stop both the echo and the LD1 heartbeat.
+    # Tests that must have run earlier in the same session; T7 alone is refused.
+    after: [T3, T4, T5, T6]
+    params:
+      idle_s: 1.0              # no output expected while idle
+      lines: ["LOOP_OK_1\r\n", "LOOP_OK_2\r\n"]
+      interval_s: 1.0          # delay between the lines
+    expected:
+      echo: identical          # each line, byte for byte
+      markers: []
+      extra_bytes: 0
+      manual_check: LD1 keeps blinking at 2 Hz
