@@ -5,7 +5,7 @@
 \brief      Initialize USART1 and echo received HIL test bytes.
 
 \author     Z. BEN-AKKA
-\version    1.6
+\version    1.7
 \date       21/10/2026
 
 \details
@@ -19,6 +19,8 @@
     the bytes that follow cause a hardware overrun (T5).
   - After echoing the line FULL_TEST, the queue is not read for 100 ms, with
     interrupts enabled, so that the bytes that follow overflow it (T6).
+  - The main loop toggles LD1 every 250 ms without blocking, so LD1 blinks at
+    2 Hz while the loop runs and stops if an interrupt storm starves it (T7).
 
 \section hil_bench_main_c_version_history Version history
 | Version | Date       | Author      | Description                                  |
@@ -30,6 +32,7 @@
 | 1.4     | 19/10/2026 | Z. BEN-AKKA | Report noise errors as deferred [NE] for T4. |
 | 1.5     | 21/10/2026 | Z. BEN-AKKA | Report deferred [ORE]; mask IRQs 2 ms on OVR_TEST for T5. |
 | 1.6     | 21/10/2026 | Z. BEN-AKKA | Report deferred [FULL]; stop reading 100 ms on FULL_TEST for T6. |
+| 1.7     | 21/10/2026 | Z. BEN-AKKA | Blink LD1 at 2 Hz from the main loop for T7. |
 ****************************
 */
 
@@ -40,6 +43,7 @@
 #define CPU_HZ        HSI_HZ ///< No clock setup: the core runs from HSI at reset.
 #define OVR_MASK_MS   2u
 #define FULL_PAUSE_MS 100u
+#define LED_TOGGLE_MS 250u ///< Half period: LD1 blinks at 2 Hz.
 
 static const char ovr_trigger[] = "OVR_TEST\r\n";
 static const char full_trigger[] = "FULL_TEST\r\n";
@@ -104,7 +108,10 @@ int main(void)
   UartInit(&BOARD_UART_VCP, 16000000U, 115200U);
   UartRxStart(&BOARD_UART_VCP);
   CycleCounterInit();
+  LedInit(&BOARD_LED_LD1);
 
+  const uint32_t led_cycles = (CPU_HZ / 1000u) * LED_TOGGLE_MS;
+  uint32_t led_last = DWT_CYCCNT;
   uint8_t fe_pending = 0u;
   uint8_t ne_pending = 0u;
   uint8_t ore_pending = 0u;
@@ -113,6 +120,12 @@ int main(void)
   uint32_t full_index = 0u;
 
   for (;;) {
+    /* Heartbeat: never blocks, so the RX queue is still read between toggles. */
+    if ((uint32_t)(DWT_CYCCNT - led_last) >= led_cycles) {
+      led_last = DWT_CYCCNT;
+      LedToggle(&BOARD_LED_LD1);
+    }
+
     UartRxEvent event;
     if (UartRxGet(&BOARD_UART_VCP, &event)) {
       if (event <= UART_RX_EVENT_BYTE_MAX) {
