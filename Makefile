@@ -5,8 +5,8 @@
 # \brief      Build, flash and document project images for a board.
 #
 # \author     Z. BEN-AKKA
-# \version    1.5
-# \date       16/10/2026
+# \version    1.6
+# \date       21/10/2026
 #
 # \details
 #   Says what to build: the applications, their sources, modules and
@@ -16,7 +16,7 @@
 #   the memories and the recipes (board_compile, board_link, board_flash...)
 #   that the rules below only call. Applications and the HIL bench are
 #   declared as images; the rules for every image come from the IMAGE
-#   template. The HIL bench links the shared GPIO and UART modules.
+#   template. The HIL bench links the shared GPIO, UART and LED modules.
 #     make 01-blink            build one application
 #     make 01-blink-flash      build and flash it with the ST-LINK
 #     make BOARD=<name> ...    build for another board folder
@@ -31,6 +31,7 @@
 # | 1.3     | 11/10/2026 | Z. BEN-AKKA | Recipes come from board.mk; this file only calls them.      |
 # | 1.4     | 14/10/2026 | Z.BEN-AKKA  | Add the HIL bench firmware image.                           |
 # | 1.5     | 16/10/2026 | Z. BEN-AKKA | Link GPIO and UART modules into the HIL bench image.        |
+# | 1.6     | 21/10/2026 | Z. BEN-AKKA | Link the LED module into the HIL bench image for T7.        |
 # ****************************
 # */
 
@@ -80,7 +81,7 @@ $(foreach a,$(SINGLE),$(eval $(a)_SRCS := $(APPS_DIR)/$(a)/main.c))
 # Hardware-in-the-loop bench firmware
 hil-bench_IMAGES := hil-bench
 hil-bench_SRCS   := tests/firmware/hil_bench/main.c
-hil-bench_MODULES := gpio uart
+hil-bench_MODULES := gpio uart led
 
 BOOT_MODULES := boot delay gpio led qspi uart
 
