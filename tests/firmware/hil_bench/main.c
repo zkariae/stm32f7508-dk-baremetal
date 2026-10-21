@@ -5,17 +5,20 @@
 \brief      Initialize USART1 and echo received HIL test bytes.
 
 \author     Z. BEN-AKKA
-\version    1.5
+\version    1.6
 \date       21/10/2026
 
 \details
   Starts USART1 at 115200 baud and echoes received bytes for the host-side
   UART RX smoke tests. It echoes received bytes and reports framing errors
-  with [FE], noise errors with [NE] and overrun errors with [ORE]. This
-  diagnostic output is temporary and is not the HIL protocol. Markers are
-  deferred until the next valid byte, so the host has restored its baud rate
-  before they are sent. After echoing the line OVR_TEST, interrupts are masked
-  for 2 ms so that the bytes that follow cause a hardware overrun (T5).
+  with [FE], noise errors with [NE], overrun errors with [ORE] and RX queue
+  overflows with [FULL]. This diagnostic output is temporary and is not the
+  HIL protocol. Markers are deferred until the next valid byte, so the host has
+  restored its baud rate before they are sent.
+  - After echoing the line OVR_TEST, interrupts are masked for 2 ms so that
+    the bytes that follow cause a hardware overrun (T5).
+  - After echoing the line FULL_TEST, the queue is not read for 100 ms, with
+    interrupts enabled, so that the bytes that follow overflow it (T6).
 
 \section hil_bench_main_c_version_history Version history
 | Version | Date       | Author      | Description                                  |
@@ -26,6 +29,7 @@
 | 1.3     | 19/10/2026 | Z. BEN-AKKA | Defer [FE] until next valid byte; fix CRLF doubling. |
 | 1.4     | 19/10/2026 | Z. BEN-AKKA | Report noise errors as deferred [NE] for T4. |
 | 1.5     | 21/10/2026 | Z. BEN-AKKA | Report deferred [ORE]; mask IRQs 2 ms on OVR_TEST for T5. |
+| 1.6     | 21/10/2026 | Z. BEN-AKKA | Report deferred [FULL]; stop reading 100 ms on FULL_TEST for T6. |
 ****************************
 */
 
@@ -33,10 +37,12 @@
 
 #include "board.h"
 
-#define CPU_HZ      HSI_HZ ///< No clock setup: the core runs from HSI at reset.
-#define OVR_MASK_MS 2u
+#define CPU_HZ        HSI_HZ ///< No clock setup: the core runs from HSI at reset.
+#define OVR_MASK_MS   2u
+#define FULL_PAUSE_MS 100u
 
 static const char ovr_trigger[] = "OVR_TEST\r\n";
+static const char full_trigger[] = "FULL_TEST\r\n";
 
 /*!
 \brief  Start the DWT cycle counter used to time the interrupt mask.
@@ -50,17 +56,47 @@ static void CycleCounterInit(void)
 }
 
 /*!
+\brief  Busy-wait for a number of milliseconds on the DWT cycle counter.
+\param  ms  Delay in milliseconds.
+*/
+static void WaitMs(uint32_t ms)
+{
+  uint32_t start = DWT_CYCCNT;
+  uint32_t cycles = (CPU_HZ / 1000u) * ms;
+
+  while ((uint32_t)(DWT_CYCCNT - start) < cycles) {}
+}
+
+/*!
 \brief  Mask interrupts for OVR_MASK_MS so USART1 RDR is not read.
 \details The next received byte stays in RDR and the following one sets ORE.
 */
 static void MaskIrqForOverrun(void)
 {
-  uint32_t start = DWT_CYCCNT;
-  uint32_t cycles = (CPU_HZ / 1000u) * OVR_MASK_MS;
-
   IrqDisable();
-  while ((uint32_t)(DWT_CYCCNT - start) < cycles) {}
+  WaitMs(OVR_MASK_MS);
   IrqEnable();
+}
+
+/*!
+\brief  Advance a trigger-line match by one received character.
+\param  trigger  NUL-terminated trigger line.
+\param  index    Number of trigger characters matched so far; updated.
+\param  c        Received character.
+\return 1 when the whole trigger has just been matched, otherwise 0.
+*/
+static int TriggerMatch(const char *trigger, uint32_t *index, char c)
+{
+  if (c == trigger[*index]) {
+    ++*index;
+  } else {
+    *index = (c == trigger[0]) ? 1u : 0u;
+  }
+  if (trigger[*index] == '\0') {
+    *index = 0u;
+    return 1;
+  }
+  return 0;
 }
 
 int main(void)
@@ -72,7 +108,9 @@ int main(void)
   uint8_t fe_pending = 0u;
   uint8_t ne_pending = 0u;
   uint8_t ore_pending = 0u;
-  uint32_t trigger_index = 0u;
+  uint8_t full_pending = 0u;
+  uint32_t ovr_index = 0u;
+  uint32_t full_index = 0u;
 
   for (;;) {
     UartRxEvent event;
@@ -90,26 +128,30 @@ int main(void)
           UartPuts(&BOARD_UART_VCP, "[ORE]\n");
           ore_pending = 0u;
         }
+        if (full_pending) {
+          UartPuts(&BOARD_UART_VCP, "[FULL]\n");
+          full_pending = 0u;
+        }
         UartPutc(&BOARD_UART_VCP, (char)event);
 
-        /* Track OVR_TEST\r\n; restart on a mismatch or any receive error. */
-        if ((char)event == ovr_trigger[trigger_index]) {
-          ++trigger_index;
-        } else {
-          trigger_index = ((char)event == ovr_trigger[0]) ? 1u : 0u;
-        }
-        if (ovr_trigger[trigger_index] == '\0') {
-          trigger_index = 0u;
+        /* Trigger lines restart on a mismatch or any receive error. */
+        if (TriggerMatch(ovr_trigger, &ovr_index, (char)event)) {
           MaskIrqForOverrun();
         }
+        if (TriggerMatch(full_trigger, &full_index, (char)event)) {
+          WaitMs(FULL_PAUSE_MS); // IRQs stay enabled: the queue fills up
+        }
       } else {
-        trigger_index = 0u;
+        ovr_index = 0u;
+        full_index = 0u;
         if (event == UART_RX_EVENT_FRAMING_ERROR) {
           fe_pending = 1u;
         } else if (event == UART_RX_EVENT_NOISE_ERROR) {
           ne_pending = 1u;
         } else if (event == UART_RX_EVENT_OVERRUN_ERROR) {
           ore_pending = 1u;
+        } else if (event == UART_RX_EVENT_BUFFER_FULL) {
+          full_pending = 1u;
         }
       }
     }
