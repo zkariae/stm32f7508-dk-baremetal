@@ -8,8 +8,8 @@ options override them. Test parameters and expected results come from
 plans/uart_rx.yaml.
 Requires pyserial and PyYAML: python -m pip install pyserial pyyaml
 
-Version: 1.11
-Date: 19/10/2026
+Version: 1.12
+Date: 21/10/2026
 Author: Z. BEN-AKKA
 History:
   1.0  16/10/2026  Initial host-side UART echo check.
@@ -24,6 +24,7 @@ History:
   1.9  19/10/2026  Load serial settings, timeouts and delays from bench.yaml.
   1.10 19/10/2026  Load T1-T4 from uart_rx.yaml, add T4 wrong baud, run all tests.
   1.11 19/10/2026  Show only the description in --help.
+  1.12 21/10/2026  Add T5 hardware overrun test.
 """
 
 import argparse
@@ -318,11 +319,84 @@ def test_t4_wrong_baud(link: serial.Serial, test: dict, bench: Bench) -> bool:
     return True
 
 
+# ---------------------------------------------------------------------------
+# Test T5: Hardware overrun
+# Method: Send the trigger line and a burst of valid bytes in one write; the
+#         firmware masks interrupts on the trigger, so the burst overruns RDR.
+#         Then send one valid line once the mask has ended.
+# Expected result: Trigger echo, a prefix of the burst (bytes kept before the
+#                  overrun), one [ORE], then the exact echo of the valid line.
+# ---------------------------------------------------------------------------
+def test_t5_overrun(link: serial.Serial, test: dict, bench: Bench) -> bool:
+    params, expected = test["params"], test["expected"]
+    if expected["then"] != "recovery_line":
+        raise PlanError("T5: only then: recovery_line is supported")
+    trigger = params["trigger_line"].encode("ascii")
+    burst = params["burst"].encode("ascii")
+    line = params["recovery_line"].encode("ascii")
+    marker = "".join(expected["markers"]).encode("ascii")
+    if not burst or not marker:
+        raise PlanError("T5: burst and markers must not be empty")
+
+    link.reset_input_buffer()
+    written = link.write(trigger + burst)
+    link.flush()
+    if written != len(trigger) + len(burst):
+        print(f"FAIL T5: wrote {written}/{len(trigger) + len(burst)} bytes", file=sys.stderr)
+        return False
+    # The recovery line must arrive after the mask; flush() only reaches the bridge.
+    time.sleep(params["mask_ms"] / 1000 + bench.baud_switch_settle)
+
+    written = link.write(line)
+    link.flush()
+    if written != len(line):
+        print(f"FAIL T5: wrote {written}/{len(line)} bytes", file=sys.stderr)
+        return False
+
+    echoed = link.read(len(trigger))
+    if echoed != trigger:
+        print(f"FAIL T5: trigger echo differs ({echoed.hex(' ')})", file=sys.stderr)
+        return False
+
+    # Kept burst bytes come first; the deferred marker precedes the next valid byte.
+    received = link.read_until(marker, size=len(burst) + len(marker))
+    kept = received[: -len(marker)]
+    if not received.endswith(marker) or not burst.startswith(kept) or not kept:
+        print(
+            f"FAIL T5: expected a burst prefix then {marker!r}; "
+            f"received {len(received)} bytes ({received.hex(' ')})",
+            file=sys.stderr,
+        )
+        return False
+    if expected["burst_loss"] and len(kept) == len(burst):
+        print("FAIL T5: whole burst echoed; no byte lost to the overrun", file=sys.stderr)
+        return False
+
+    echoed = link.read(len(line))
+    if echoed != line:
+        print(
+            f"FAIL T5: valid-line echo differs at byte {first_mismatch(echoed, line)}; "
+            f"received {len(echoed)}/{len(line)} bytes ({echoed.hex(' ')})",
+            file=sys.stderr,
+        )
+        return False
+
+    if not check_no_extra(link, "T5", expected):
+        return False
+
+    print(
+        f"PASS T5: {len(kept)}/{len(burst)} burst bytes kept, {marker.decode('ascii').strip()} "
+        "reported; following line echoed identically"
+    )
+    return True
+
+
 TESTS = {
     "T1": test_t1_nominal_receive,
     "T2": test_t2_burst_receive,
     "T3": test_t3_framing_error,
     "T4": test_t4_wrong_baud,
+    "T5": test_t5_overrun,
 }
 
 
