@@ -8,7 +8,7 @@ options override them. Test parameters and expected results come from
 plans/uart_rx.yaml.
 Requires pyserial and PyYAML: python -m pip install pyserial pyyaml
 
-Version: 1.13
+Version: 1.14
 Date: 21/10/2026
 Author: Z. BEN-AKKA
 History:
@@ -26,6 +26,7 @@ History:
   1.11 19/10/2026  Show only the description in --help.
   1.12 21/10/2026  Add T5 hardware overrun test.
   1.13 21/10/2026  Add T6 RX buffer overflow test.
+  1.14 21/10/2026  Add T7 no interrupt storm test; enforce plan "after" order.
 """
 
 import argparse
@@ -468,6 +469,56 @@ def test_t6_buffer_overflow(link: serial.Serial, test: dict, bench: Bench) -> bo
     return True
 
 
+# ---------------------------------------------------------------------------
+# Test T7: No interrupt storm
+# Method: After T3 to T6 in the same run, stay idle, then send valid lines
+#         spaced in time.
+# Expected result: No output while idle, each line echoed identically, and
+#                  LD1 still blinking (visual check).
+# ---------------------------------------------------------------------------
+def test_t7_no_irq_storm(link: serial.Serial, test: dict, bench: Bench) -> bool:
+    params, expected = test["params"], test["expected"]
+    if expected["echo"] != "identical" or expected["markers"]:
+        raise PlanError("T7: only an identical echo without markers is supported")
+    lines = [line.encode("ascii") for line in params["lines"]]
+    if not lines:
+        raise PlanError("T7: lines must not be empty")
+
+    # No reset_input_buffer(): output left by the previous tests must show here.
+    time.sleep(params["idle_s"])
+    idle = link.read(link.in_waiting)
+    if idle:
+        print(f"FAIL T7: {len(idle)} bytes received while idle ({idle.hex(' ')})", file=sys.stderr)
+        return False
+
+    for index, line in enumerate(lines):
+        if index:
+            time.sleep(params["interval_s"])
+        written = link.write(line)
+        link.flush()
+        if written != len(line):
+            print(f"FAIL T7: line {index + 1}: wrote {written}/{len(line)} bytes", file=sys.stderr)
+            return False
+        echoed = link.read(len(line))
+        if echoed != line:
+            print(
+                f"FAIL T7: line {index + 1} differs at byte {first_mismatch(echoed, line)}; "
+                f"received {len(echoed)}/{len(line)} bytes ({echoed.hex(' ')})",
+                file=sys.stderr,
+            )
+            return False
+
+    if not check_no_extra(link, "T7", expected):
+        return False
+
+    print(
+        f"PASS T7: idle {params['idle_s']} s silent; {len(lines)} lines "
+        f"{params['interval_s']} s apart echoed identically"
+    )
+    print(f"CHECK T7: {expected['manual_check']} (visual)")
+    return True
+
+
 TESTS = {
     "T1": test_t1_nominal_receive,
     "T2": test_t2_burst_receive,
@@ -475,6 +526,7 @@ TESTS = {
     "T4": test_t4_wrong_baud,
     "T5": test_t5_overrun,
     "T6": test_t6_buffer_overflow,
+    "T7": test_t7_no_irq_storm,
 }
 
 
@@ -511,6 +563,14 @@ def main() -> int:
             if unknown:
                 raise ValueError(f"--only: {', '.join(unknown)} not in plan ({', '.join(planned)})")
             plan = [test for test in plan if test["id"] in args.only]
+        selected = [test["id"] for test in plan]
+        for position, test in enumerate(plan):
+            missing = [test_id for test_id in test.get("after", []) if test_id not in selected[:position]]
+            if missing:
+                raise ValueError(
+                    f"{test['id']} must run after {', '.join(missing)} in the same run; "
+                    f"add them to --only"
+                )
     except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as error:
         detail = f"missing key {error}" if isinstance(error, KeyError) else error
         print(f"Configuration error in {source}: {detail}", file=sys.stderr)
