@@ -5,20 +5,21 @@
 \brief      Commands to run the UART RX HIL tests.
 
 \author     Z. BEN-AKKA
-\version    1.1
+\version    1.2
 \date       21/10/2026
 
 \details
-  Lists the commands to run the UART RX tests T1 to T5, all together or one
+  Lists the commands to run the UART RX tests T1 to T6, all together or one
   at a time, and the options that override the default files and settings.
   Test definitions are in plans/uart_rx.yaml; bench settings are in
   config/bench.yaml.
 
 \section run_tests_md_version_history Version history
-| Version | Date       | Author      | Description                  |
-|:-------:|:----------:|:------------|:-----------------------------|
-| 1.0     | 19/10/2026 | Z. BEN-AKKA | Initial version.             |
-| 1.1     | 21/10/2026 | Z. BEN-AKKA | Add T5 hardware overrun run. |
+| Version | Date       | Author      | Description                    |
+|:-------:|:----------:|:------------|:-------------------------------|
+| 1.0     | 19/10/2026 | Z. BEN-AKKA | Initial version.               |
+| 1.1     | 21/10/2026 | Z. BEN-AKKA | Add T5 hardware overrun run.   |
+| 1.2     | 21/10/2026 | Z. BEN-AKKA | Add T6 RX buffer overflow run. |
 ****************************
 -->
 
@@ -36,7 +37,7 @@ make hil-bench-flash                     # flash the raw-echo bench firmware
 ## Run all tests
 
 ```bash
-python3 tests/host/hil/uart_tx_check.py               # T1 to T5, in plan order
+python3 tests/host/hil/uart_tx_check.py               # T1 to T6, in plan order
 ```
 
 ## Run one test
@@ -47,6 +48,7 @@ python3 tests/host/hil/uart_tx_check.py --only T2     # Burst reception
 python3 tests/host/hil/uart_tx_check.py --only T3     # Framing error
 python3 tests/host/hil/uart_tx_check.py --only T4     # Wrong baud rate
 python3 tests/host/hil/uart_tx_check.py --only T5     # Hardware overrun
+python3 tests/host/hil/uart_tx_check.py --only T6     # RX buffer overflow
 ```
 
 ## Run a selection
@@ -58,7 +60,7 @@ python3 tests/host/hil/uart_tx_check.py --only T3 T4  # runs in plan order
 ## Repeat a run
 
 ```bash
-for i in $(seq 10); do python3 tests/host/hil/uart_tx_check.py; done
+for i in $(seq 10); do python3 tests/host/hil/uart_tx_check.py; done   # about 14 s per run
 ```
 
 ## Options
