@@ -8,7 +8,7 @@ options override them. Test parameters and expected results come from
 plans/uart_rx.yaml.
 Requires pyserial and PyYAML: python -m pip install pyserial pyyaml
 
-Version: 1.16
+Version: 1.17
 Date: 22/10/2026
 Author: Z. BEN-AKKA
 History:
@@ -29,6 +29,7 @@ History:
   1.14 21/10/2026  Add T7 no interrupt storm test; enforce plan "after" order.
   1.15 21/10/2026  Add T8 RX flush test.
   1.16 22/10/2026  Rename from uart_tx_check.py: the script runs the UART RX plan.
+  1.17 22/10/2026  Wait extra_byte_wait, not the read timeout, in the extra-byte check.
 """
 
 import argparse
@@ -68,6 +69,7 @@ class Bench:
 
     timeout: float
     baud_switch_settle: float
+    extra_byte_wait: float
 
 
 def load_yaml(path: Path) -> dict:
@@ -109,10 +111,15 @@ def first_mismatch(received: bytes, expected: bytes) -> int:
     return next((index for index in range(limit) if received[index] != expected[index]), limit)
 
 
-def check_no_extra(link: serial.Serial, test_id: str, expected: dict) -> bool:
+def check_no_extra(link: serial.Serial, test_id: str, expected: dict, bench: Bench) -> bool:
     if expected.get("extra_bytes", 0) != 0:
         raise PlanError(f"{test_id}: only extra_bytes: 0 is supported")
-    extra = link.read(1)
+    # A stray byte would follow the last expected one at once: no need for the read timeout.
+    saved_timeout, link.timeout = link.timeout, bench.extra_byte_wait
+    try:
+        extra = link.read(1)
+    finally:
+        link.timeout = saved_timeout
     if extra:
         print(f"FAIL {test_id}: unexpected extra byte {extra.hex(' ')}", file=sys.stderr)
         return False
@@ -187,7 +194,7 @@ def test_t1_nominal_receive(link: serial.Serial, test: dict, bench: Bench) -> bo
             )
             return False
 
-    if not check_no_extra(link, "T1", expected):
+    if not check_no_extra(link, "T1", expected, bench):
         return False
 
     print(
@@ -224,7 +231,7 @@ def test_t2_burst_receive(link: serial.Serial, test: dict, bench: Bench) -> bool
         )
         return False
 
-    if not check_no_extra(link, "T2", expected):
+    if not check_no_extra(link, "T2", expected, bench):
         return False
 
     print(f"PASS T2: {len(payload):,}-byte burst echoed identically; no extra byte received")
@@ -265,7 +272,7 @@ def test_t3_framing_error(link: serial.Serial, test: dict, bench: Bench) -> bool
         )
         return False
 
-    if not check_no_extra(link, "T3", expected):
+    if not check_no_extra(link, "T3", expected, bench):
         return False
 
     names = " ".join(marker.strip() for marker in expected["markers"])
@@ -319,7 +326,7 @@ def test_t4_wrong_baud(link: serial.Serial, test: dict, bench: Bench) -> bool:
               file=sys.stderr)
         return False
 
-    if not check_no_extra(link, "T4", expected):
+    if not check_no_extra(link, "T4", expected, bench):
         return False
 
     names = " ".join(marker.decode("ascii").strip() for marker in markers)
@@ -390,7 +397,7 @@ def test_t5_overrun(link: serial.Serial, test: dict, bench: Bench) -> bool:
         )
         return False
 
-    if not check_no_extra(link, "T5", expected):
+    if not check_no_extra(link, "T5", expected, bench):
         return False
 
     print(
@@ -461,7 +468,7 @@ def test_t6_buffer_overflow(link: serial.Serial, test: dict, bench: Bench) -> bo
         )
         return False
 
-    if not check_no_extra(link, "T6", expected):
+    if not check_no_extra(link, "T6", expected, bench):
         return False
 
     print(
@@ -510,7 +517,7 @@ def test_t7_no_irq_storm(link: serial.Serial, test: dict, bench: Bench) -> bool:
             )
             return False
 
-    if not check_no_extra(link, "T7", expected):
+    if not check_no_extra(link, "T7", expected, bench):
         return False
 
     print(
@@ -571,7 +578,7 @@ def test_t8_flush(link: serial.Serial, test: dict, bench: Bench) -> bool:
         )
         return False
 
-    if not check_no_extra(link, "T8", expected):
+    if not check_no_extra(link, "T8", expected, bench):
         return False
 
     print(
@@ -616,7 +623,11 @@ def main() -> int:
         baud = args.baud or link_config["baudrate"]
         timeout = args.timeout if args.timeout is not None else config["timeouts"]["read"]
         port_open_settle = config["delays"]["port_open_settle"]
-        bench = Bench(timeout, config["delays"]["baud_switch_settle"])
+        bench = Bench(
+            timeout,
+            config["delays"]["baud_switch_settle"],
+            config["delays"]["extra_byte_wait"],
+        )
 
         source = args.plan
         plan = load_test_plan(args.plan)
