@@ -1,0 +1,169 @@
+# SPDX-License-Identifier: MIT
+# ****************************
+# \file       tests/host/hil/plans/uart_rx.yaml
+# \brief      UART RX test plan T1 to T8: method, parameters and expected results.
+#
+# \author     Z. BEN-AKKA
+# \version    1.4
+# \date       21/10/2026
+#
+# \details
+#   Describes what each UART RX test sends and expects. The test procedures
+#   stay in uart_tx_check.py; bench settings (port, timeouts, delays) stay in
+#   config/bench.yaml. Run results are not stored here.
+#   Markers are the firmware diagnostic lines, including their CRLF.
+#
+# \section uart_rx_yaml_version_history Version history
+# | Version | Date       | Author      | Description                     |
+# |:-------:|:----------:|:------------|:--------------------------------|
+# | 1.0     | 19/10/2026 | Z. BEN-AKKA | Initial version.                |
+# | 1.1     | 19/10/2026 | Z. BEN-AKKA | Add T5 hardware overrun test.   |
+# | 1.2     | 21/10/2026 | Z. BEN-AKKA | Add T6 RX buffer overflow test. |
+# | 1.3     | 21/10/2026 | Z. BEN-AKKA | Add T7 no interrupt storm test. |
+# | 1.4     | 21/10/2026 | Z. BEN-AKKA | Add T8 RX flush test.           |
+# ****************************
+
+schema_version: 1
+
+tests:
+  - id: T1
+    title: Nominal reception
+    method: Send printable ASCII lines with CRLF, one line at a time, and read each echo.
+    params:
+      line_count: 100
+      chars_per_line: 128
+      # Byte at (line, column) = first_char + (line * line_stride + column) % char_count
+      first_char: 0x20
+      char_count: 95
+      line_stride: 17
+      terminator: "\r\n"
+    expected:
+      echo: identical          # byte for byte
+      markers: []
+      extra_bytes: 0
+
+  - id: T2
+    title: Burst reception
+    method: Send all bytes in one write while the firmware reads continuously.
+    params:
+      byte_count: 1000
+      # Byte at index i = i & 0xFF
+      pattern: index_mod_256
+    expected:
+      echo: identical
+      markers: []
+      extra_bytes: 0
+
+  - id: T3
+    title: Framing error
+    method: Send one byte at a wrong baud rate, restore the bench baud rate, send a valid line.
+    params:
+      wrong_baud: 9600
+      payload: [0x00]
+      repeat: 1
+      recovery_line: "RECOVERY_OK\r\n"
+    expected:
+      markers: ["[FE]\r\n"]
+      then: recovery_line      # exact echo after the markers
+      extra_bytes: 0
+
+  - id: T4
+    title: Wrong baud rate
+    method: Send a burst at a wrong baud rate, restore the bench baud rate, send a valid line.
+    params:
+      wrong_baud: 57600
+      # Bits 3 to 7 are zero: at half the bench baud rate the firmware samples
+      # bit 3 as the stop bit, so each byte gives one framing error and no echo.
+      payload: [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]
+      repeat: 8
+      recovery_line: "RECOVERY_OK\r\n"
+    expected:
+      markers_any_of: ["[FE]\r\n", "[NE]\r\n"]
+      min_markers: 1
+      then: recovery_line      # proves the firmware is not blocked
+      extra_bytes: 0
+
+  - id: T5
+    title: Hardware overrun
+    method: >-
+      Send the trigger line followed at once by a burst of valid bytes. On the
+      trigger, the firmware masks interrupts for mask_ms, so the burst arrives
+      while RDR is not read. Then send a valid line.
+    params:
+      # Never sent by T1 to T4: T1 and T2 only send runs of consecutive codes.
+      trigger_line: "OVR_TEST\r\n"
+      mask_ms: 2
+      # 8 bytes take 0.7 ms at 115200 baud, so all arrive inside the mask.
+      burst: "01234567"
+      recovery_line: "RECOVERY_OK\r\n"
+    expected:
+      # Trigger echo, the burst bytes the firmware kept (at least one byte,
+      # in order), one [ORE], then the exact echo of the recovery line.
+      markers: ["[ORE]\r\n"]
+      burst_loss: true         # bytes received while masked are lost
+      then: recovery_line      # proves reception resumes
+      extra_bytes: 0
+
+  - id: T6
+    title: RX buffer overflow
+    method: >-
+      Send the trigger line followed at once by a burst larger than the RX
+      queue. On the trigger, the firmware stops reading the queue for pause_ms
+      with interrupts enabled, so the queue fills up. Read the echo, then send
+      a valid line.
+    params:
+      # Never sent by T1 to T5: T1 and T2 only send runs of consecutive codes.
+      trigger_line: "FULL_TEST\r\n"
+      pause_ms: 100
+      # 400 bytes take 34.7 ms at 115200 baud, so all arrive inside the pause.
+      byte_count: 400
+      # Byte at index i = i & 0xFF
+      pattern: index_mod_256
+      recovery_line: "RECOVERY_OK\r\n"
+    expected:
+      # UART_RX_BUFFER_SIZE: the queue keeps the oldest bytes and drops the rest.
+      kept: 256                # trigger echo, then the first 256 burst bytes
+      markers: ["[FULL]\r\n"]
+      then: recovery_line      # proves reception resumes
+      extra_bytes: 0
+
+  - id: T7
+    title: No interrupt storm
+    method: >-
+      After the error tests, stay idle, then send valid lines spaced in time.
+      A receive error flag left set would keep the USART interrupt pending,
+      starve the main loop and stop both the echo and the LD1 heartbeat.
+    # Tests that must have run earlier in the same session; T7 alone is refused.
+    after: [T3, T4, T5, T6]
+    params:
+      idle_s: 1.0              # no output expected while idle
+      lines: ["LOOP_OK_1\r\n", "LOOP_OK_2\r\n"]
+      interval_s: 1.0          # delay between the lines
+    expected:
+      echo: identical          # each line, byte for byte
+      markers: []
+      extra_bytes: 0
+      manual_check: LD1 keeps blinking at 2 Hz
+
+  - id: T8
+    title: RX flush
+    method: >-
+      Send the trigger line followed at once by a burst. On the trigger, the
+      firmware lets the burst queue for pause_ms without reading it, calls
+      UartRxFlush(), checks that UartRxGet() finds nothing and reports the
+      number of bytes flushed. Then send a valid line.
+    params:
+      # Never sent by T1 to T7: T1 and T2 only send runs of consecutive codes.
+      trigger_line: "FLUSH_TEST\r\n"
+      pause_ms: 50
+      # 32 bytes take 2.8 ms at 115200 baud, so all arrive inside the pause.
+      byte_count: 32
+      # Byte at index i = i & 0xFF
+      pattern: index_mod_256
+      recovery_line: "RECOVERY_OK\r\n"
+    expected:
+      # {byte_count} is replaced by params.byte_count: flushed count = bytes sent.
+      marker: "[EMPTY n={byte_count}]\r\n"
+      burst_echo: none         # no flushed byte may be echoed
+      then: recovery_line      # proves reception still works
+      extra_bytes: 0
