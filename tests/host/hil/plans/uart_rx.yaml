@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: MIT
 # ****************************
 # \file       tests/host/hil/plans/uart_rx.yaml
-# \brief      UART RX test plan T1 to T7: method, parameters and expected results.
+# \brief      UART RX test plan T1 to T8: method, parameters and expected results.
 #
 # \author     Z. BEN-AKKA
-# \version    1.3
+# \version    1.4
 # \date       21/10/2026
 #
 # \details
@@ -20,6 +20,7 @@
 # | 1.1     | 19/10/2026 | Z. BEN-AKKA | Add T5 hardware overrun test.   |
 # | 1.2     | 21/10/2026 | Z. BEN-AKKA | Add T6 RX buffer overflow test. |
 # | 1.3     | 21/10/2026 | Z. BEN-AKKA | Add T7 no interrupt storm test. |
+# | 1.4     | 21/10/2026 | Z. BEN-AKKA | Add T8 RX flush test.           |
 # ****************************
 
 schema_version: 1
@@ -143,3 +144,26 @@ tests:
       markers: []
       extra_bytes: 0
       manual_check: LD1 keeps blinking at 2 Hz
+
+  - id: T8
+    title: RX flush
+    method: >-
+      Send the trigger line followed at once by a burst. On the trigger, the
+      firmware lets the burst queue for pause_ms without reading it, calls
+      UartRxFlush(), checks that UartRxGet() finds nothing and reports the
+      number of bytes flushed. Then send a valid line.
+    params:
+      # Never sent by T1 to T7: T1 and T2 only send runs of consecutive codes.
+      trigger_line: "FLUSH_TEST\r\n"
+      pause_ms: 50
+      # 32 bytes take 2.8 ms at 115200 baud, so all arrive inside the pause.
+      byte_count: 32
+      # Byte at index i = i & 0xFF
+      pattern: index_mod_256
+      recovery_line: "RECOVERY_OK\r\n"
+    expected:
+      # {byte_count} is replaced by params.byte_count: flushed count = bytes sent.
+      marker: "[EMPTY n={byte_count}]\r\n"
+      burst_echo: none         # no flushed byte may be echoed
+      then: recovery_line      # proves reception still works
+      extra_bytes: 0
