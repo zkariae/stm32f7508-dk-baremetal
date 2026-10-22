@@ -5,11 +5,11 @@
 \brief      Commands to run the UART RX HIL tests.
 
 \author     Z. BEN-AKKA
-\version    1.3
-\date       21/10/2026
+\version    1.4
+\date       22/10/2026
 
 \details
-  Lists the commands to run the UART RX tests T1 to T7, all together or one
+  Lists the commands to run the UART RX tests T1 to T8, all together or one
   at a time, and the options that override the default files and settings.
   Test definitions are in plans/uart_rx.yaml; bench settings are in
   config/bench.yaml.
@@ -21,6 +21,7 @@
 | 1.1     | 21/10/2026 | Z. BEN-AKKA | Add T5 hardware overrun run.                   |
 | 1.2     | 21/10/2026 | Z. BEN-AKKA | Add T6 RX buffer overflow run.                 |
 | 1.3     | 21/10/2026 | Z. BEN-AKKA | Add T7 run with its prerequisites; port first. |
+| 1.4     | 22/10/2026 | Z. BEN-AKKA | Add T8 RX flush run.                           |
 ****************************
 -->
 
@@ -38,7 +39,7 @@ make hil-bench-flash                     # flash the raw-echo bench firmware
 ## Run all tests
 
 ```bash
-python3 tests/host/hil/uart_tx_check.py               # T1 to T7, in plan order
+python3 tests/host/hil/uart_tx_check.py               # T1 to T8, in plan order
 ```
 
 T7 prints `CHECK T7: LD1 keeps blinking at 2 Hz (visual)`: check LD1 on the board.
@@ -53,6 +54,7 @@ python3 tests/host/hil/uart_tx_check.py --only T4     # Wrong baud rate
 python3 tests/host/hil/uart_tx_check.py --only T5     # Hardware overrun
 python3 tests/host/hil/uart_tx_check.py --only T6     # RX buffer overflow
 python3 tests/host/hil/uart_tx_check.py --only T3 T4 T5 T6 T7   # No interrupt storm
+python3 tests/host/hil/uart_tx_check.py --only T8     # RX flush
 ```
 
 T7 must run after T3 to T6 in the same run: `--only T7` alone is refused
@@ -70,7 +72,7 @@ python3 tests/host/hil/uart_tx_check.py /dev/ttyACM1 --only T3 T4   # port befor
 ## Repeat a run
 
 ```bash
-for i in $(seq 10); do python3 tests/host/hil/uart_tx_check.py; done   # about 18 s per run
+for i in $(seq 10); do python3 tests/host/hil/uart_tx_check.py; done   # about 20 s per run
 ```
 
 ## Options
