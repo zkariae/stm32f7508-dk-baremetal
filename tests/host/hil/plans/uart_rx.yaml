@@ -4,12 +4,12 @@
 # \brief      UART RX test plan T1 to T8: method, parameters and expected results.
 #
 # \author     Z. BEN-AKKA
-# \version    1.4
-# \date       21/10/2026
+# \version    1.5
+# \date       22/10/2026
 #
 # \details
 #   Describes what each UART RX test sends and expects. The test procedures
-#   stay in uart_tx_check.py; bench settings (port, timeouts, delays) stay in
+#   stay in uart_rx_check.py; bench settings (port, timeouts, delays) stay in
 #   config/bench.yaml. Run results are not stored here.
 #   Markers are the firmware diagnostic lines, including their CRLF.
 #
@@ -21,6 +21,7 @@
 # | 1.2     | 21/10/2026 | Z. BEN-AKKA | Add T6 RX buffer overflow test. |
 # | 1.3     | 21/10/2026 | Z. BEN-AKKA | Add T7 no interrupt storm test. |
 # | 1.4     | 21/10/2026 | Z. BEN-AKKA | Add T8 RX flush test.           |
+# | 1.5     | 22/10/2026 | Z. BEN-AKKA | Refer to uart_rx_check.py.      |
 # ****************************
 
 schema_version: 1

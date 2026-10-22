@@ -8,8 +8,8 @@ options override them. Test parameters and expected results come from
 plans/uart_rx.yaml.
 Requires pyserial and PyYAML: python -m pip install pyserial pyyaml
 
-Version: 1.15
-Date: 21/10/2026
+Version: 1.16
+Date: 22/10/2026
 Author: Z. BEN-AKKA
 History:
   1.0  16/10/2026  Initial host-side UART echo check.
@@ -28,6 +28,7 @@ History:
   1.13 21/10/2026  Add T6 RX buffer overflow test.
   1.14 21/10/2026  Add T7 no interrupt storm test; enforce plan "after" order.
   1.15 21/10/2026  Add T8 RX flush test.
+  1.16 22/10/2026  Rename from uart_tx_check.py: the script runs the UART RX plan.
 """
 
 import argparse
