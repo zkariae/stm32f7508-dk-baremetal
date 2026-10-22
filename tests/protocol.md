@@ -5,8 +5,8 @@
 \brief      HIL firmware-to-host protocol specification.
 
 \author     Z. BEN-AKKA
-\version    1.1
-\date       14/10/2026
+\version    1.2
+\date       22/10/2026
 
 \details
   Specifies the HIL host-firmware serial interface, including record syntax,
@@ -19,6 +19,7 @@
 |:-------:|:----------:|:------------|:-----------------------------------------|
 | 1.0     | 14/10/2026 | Z. BEN-AKKA | Initial version.                         |
 | 1.1     | 16/10/2026 | Z. BEN-AKKA | Formalize HIL records, commands, reset reporting, and recovery. |
+| 1.2     | 22/10/2026 | Z. BEN-AKKA | Update §2.4 note: the UART driver now receives. |
 ****************************
 -->
 
@@ -122,9 +123,10 @@ link. Debug or other non-protocol output SHALL NOT be sent on it.
   2.3, it SHALL treat it as a protocol failure, except during startup (see
   section 4.1).
 
-> **Note (informative):** The current shared UART driver only transmits.
-> Bounded UART reception, with detection of framing and overrun errors, must
-> be implemented before the firmware can conform to this specification.
+> **Note (informative):** The shared UART driver now receives into a bounded
+> queue and reports framing, noise, overrun and queue-full events. The
+> firmware must still assemble lines from these events before it can conform
+> to this section.
 
 ## 3. Versioning and compatibility
 
