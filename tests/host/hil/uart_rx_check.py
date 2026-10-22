@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Send raw test bytes to the HIL UART and verify the firmware echo.
 
-The firmware must be built in a temporary raw-echo mode for this check.
-This diagnostic is separate from the line-based HIL protocol.
+The board must run the uart-diag image (make uart-diag-flash), the raw-echo
+UART driver diagnostic. It is separate from the hil-bench protocol firmware.
 Serial settings, timeouts and delays come from config/bench.yaml; command-line
 options override them. Test parameters and expected results come from
 plans/uart_rx.yaml.
 Requires pyserial and PyYAML: python -m pip install pyserial pyyaml
 
-Version: 1.17
+Version: 1.18
 Date: 22/10/2026
 Author: Z. BEN-AKKA
 History:
@@ -30,6 +30,7 @@ History:
   1.15 21/10/2026  Add T8 RX flush test.
   1.16 22/10/2026  Rename from uart_tx_check.py: the script runs the UART RX plan.
   1.17 22/10/2026  Wait extra_byte_wait, not the read timeout, in the extra-byte check.
+  1.18 22/10/2026  Require the uart-diag image instead of a raw-echo build mode.
 """
 
 import argparse
