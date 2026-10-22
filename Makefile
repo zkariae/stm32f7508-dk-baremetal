@@ -5,18 +5,20 @@
 # \brief      Build, flash and document project images for a board.
 #
 # \author     Z. BEN-AKKA
-# \version    1.6
-# \date       21/10/2026
+# \version    1.7
+# \date       22/10/2026
 #
 # \details
 #   Says what to build: the applications, their sources, modules and
 #   memories, and the project-wide compiler options. It also declares the
-#   HIL bench firmware from tests/firmware/hil_bench/. How to build and
-#   program the images is the board's: $(BOARD)/board.mk provides the toolchain,
-#   the memories and the recipes (board_compile, board_link, board_flash...)
-#   that the rules below only call. Applications and the HIL bench are
-#   declared as images; the rules for every image come from the IMAGE
-#   template. The HIL bench links the shared GPIO, UART and LED modules.
+#   two test images: hil-bench, the HIL protocol firmware from
+#   tests/firmware/hil_bench/, and uart-diag, the UART driver diagnostic from
+#   tests/firmware/uart_diag/. How to build and program the images is the
+#   board's: $(BOARD)/board.mk provides the toolchain, the memories and the
+#   recipes (board_compile, board_link, board_flash...) that the rules below
+#   only call. Applications and test images are declared as images; the rules
+#   for every image come from the IMAGE template. Both test images link the
+#   shared GPIO, UART and LED modules.
 #     make 01-blink            build one application
 #     make 01-blink-flash      build and flash it with the ST-LINK
 #     make BOARD=<name> ...    build for another board folder
@@ -32,6 +34,7 @@
 # | 1.4     | 14/10/2026 | Z.BEN-AKKA  | Add the HIL bench firmware image.                           |
 # | 1.5     | 16/10/2026 | Z. BEN-AKKA | Link GPIO and UART modules into the HIL bench image.        |
 # | 1.6     | 21/10/2026 | Z. BEN-AKKA | Link the LED module into the HIL bench image for T7.        |
+# | 1.7     | 22/10/2026 | Z. BEN-AKKA | Add the uart-diag image for the UART RX checks.             |
 # ****************************
 # */
 
@@ -83,6 +86,11 @@ hil-bench_IMAGES := hil-bench
 hil-bench_SRCS   := tests/firmware/hil_bench/main.c
 hil-bench_MODULES := gpio uart led
 
+# UART driver diagnostic: raw echo and RX error markers (uart_rx_check.py T1-T8)
+uart-diag_IMAGES  := uart-diag
+uart-diag_SRCS    := tests/firmware/uart_diag/main.c
+uart-diag_MODULES := gpio uart led
+
 BOOT_MODULES := boot delay gpio led qspi uart
 
 # 08: a bootloader in internal flash, and 01-blink, unchanged, relinked to
@@ -106,7 +114,7 @@ BOOT_MODULES := boot delay gpio led qspi uart
 09-securebootloader-app_MEMORY   := qspi
 
 MULTI  := 08-custombootloader 09-securebootloader
-APPS   := $(SINGLE) $(MULTI) hil-bench
+APPS   := $(SINGLE) $(MULTI) hil-bench uart-diag
 IMAGES := $(foreach a,$(APPS),$($(a)_IMAGES))
 
 ####################################################################
