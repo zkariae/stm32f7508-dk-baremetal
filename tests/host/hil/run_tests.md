@@ -5,7 +5,7 @@
 \brief      Commands to run the UART RX HIL tests.
 
 \author     Z. BEN-AKKA
-\version    1.5
+\version    1.6
 \date       22/10/2026
 
 \details
@@ -23,6 +23,7 @@
 | 1.3     | 21/10/2026 | Z. BEN-AKKA | Add T7 run with its prerequisites; port first. |
 | 1.4     | 22/10/2026 | Z. BEN-AKKA | Add T8 RX flush run.                           |
 | 1.5     | 22/10/2026 | Z. BEN-AKKA | Use the renamed uart_rx_check.py script.       |
+| 1.6     | 22/10/2026 | Z. BEN-AKKA | Run-all command alone; bench delays; 6 s runs. |
 ****************************
 -->
 
@@ -40,10 +41,11 @@ make hil-bench-flash                     # flash the raw-echo bench firmware
 ## Run all tests
 
 ```bash
-python3 tests/host/hil/uart_rx_check.py               # T1 to T8, in plan order
+python3 tests/host/hil/uart_rx_check.py
 ```
 
-T7 prints `CHECK T7: LD1 keeps blinking at 2 Hz (visual)`: check LD1 on the board.
+Runs T1 to T8 in plan order. T7 prints
+`CHECK T7: LD1 keeps blinking at 2 Hz (visual)`: check LD1 on the board.
 
 ## Run one test
 
@@ -73,7 +75,7 @@ python3 tests/host/hil/uart_rx_check.py /dev/ttyACM1 --only T3 T4   # port befor
 ## Repeat a run
 
 ```bash
-for i in $(seq 10); do python3 tests/host/hil/uart_rx_check.py; done   # about 20 s per run
+for i in $(seq 10); do python3 tests/host/hil/uart_rx_check.py; done   # about 6 s per run
 ```
 
 ## Options
@@ -109,6 +111,14 @@ python3 tests/host/hil/uart_rx_check.py /dev/ttyACM1 --only T4 --timeout 5
 # List all options
 python3 tests/host/hil/uart_rx_check.py --help
 ```
+
+Bench delays have no command-line option; change them in `config/bench.yaml`:
+
+| Key | Default | Purpose |
+|:--|:--|:--|
+| `delays.port_open_settle` | `0.1` | Wait after opening the port |
+| `delays.baud_switch_settle` | `0.05` | Wait around a baud rate switch (T3, T4) and USB margin (T5, T6) |
+| `delays.extra_byte_wait` | `0.2` | Wait for an unexpected byte at the end of each test; `--timeout` does not change it |
 
 ## Exit codes
 
