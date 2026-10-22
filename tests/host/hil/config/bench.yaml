@@ -4,7 +4,7 @@
 # \brief      HIL bench configuration: serial port, baud rate, delays and hardware options.
 #
 # \author     Z. BEN-AKKA
-# \version    1.1
+# \version    1.2
 # \date       22/10/2026
 #
 # \details
@@ -13,10 +13,11 @@
 #   All durations are in seconds.
 #
 # \section bench_yaml_version_history Version history
-# | Version | Date       | Author      | Description                |
-# |:-------:|:----------:|:------------|:---------------------------|
-# | 1.0     | 19/10/2026 | Z. BEN-AKKA | Initial version.           |
-# | 1.1     | 22/10/2026 | Z. BEN-AKKA | Refer to uart_rx_check.py. |
+# | Version | Date       | Author      | Description                 |
+# |:-------:|:----------:|:------------|:----------------------------|
+# | 1.0     | 19/10/2026 | Z. BEN-AKKA | Initial version.            |
+# | 1.1     | 22/10/2026 | Z. BEN-AKKA | Refer to uart_rx_check.py.  |
+# | 1.2     | 22/10/2026 | Z. BEN-AKKA | Add extra_byte_wait delay.  |
 # ****************************
 
 schema_version: 1
@@ -37,6 +38,8 @@ timeouts:                     # seconds
 delays:                       # seconds
   port_open_settle: 0.1       # uart_rx_check.py, after opening the port
   baud_switch_settle: 0.05    # uart_rx_check.py, T3 baud switch
+  # The firmware answers within a few ms; a stray byte would follow at once.
+  extra_byte_wait: 0.2        # uart_rx_check.py, wait for an unexpected byte
 
 hardware:
   board: stm32f7508-dk
