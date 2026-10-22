@@ -8,7 +8,7 @@ options override them. Test parameters and expected results come from
 plans/uart_rx.yaml.
 Requires pyserial and PyYAML: python -m pip install pyserial pyyaml
 
-Version: 1.14
+Version: 1.15
 Date: 21/10/2026
 Author: Z. BEN-AKKA
 History:
@@ -27,6 +27,7 @@ History:
   1.12 21/10/2026  Add T5 hardware overrun test.
   1.13 21/10/2026  Add T6 RX buffer overflow test.
   1.14 21/10/2026  Add T7 no interrupt storm test; enforce plan "after" order.
+  1.15 21/10/2026  Add T8 RX flush test.
 """
 
 import argparse
@@ -519,6 +520,66 @@ def test_t7_no_irq_storm(link: serial.Serial, test: dict, bench: Bench) -> bool:
     return True
 
 
+# ---------------------------------------------------------------------------
+# Test T8: RX flush
+# Method: Send the trigger line and a burst in one write; the firmware lets
+#         the burst queue, calls UartRxFlush() and reports the flushed count.
+#         Then send one valid line.
+# Expected result: Trigger echo, [EMPTY n=<byte_count>] with no burst byte
+#                  echoed, then the exact echo of the valid line.
+# ---------------------------------------------------------------------------
+def test_t8_flush(link: serial.Serial, test: dict, bench: Bench) -> bool:
+    params, expected = test["params"], test["expected"]
+    if expected["then"] != "recovery_line" or expected["burst_echo"] != "none":
+        raise PlanError("T8: only burst_echo: none then recovery_line is supported")
+    trigger = params["trigger_line"].encode("ascii")
+    payload = pattern_payload("T8", params)
+    line = params["recovery_line"].encode("ascii")
+    marker = expected["marker"].format(**params).encode("ascii")
+
+    link.reset_input_buffer()
+    written = link.write(trigger + payload)
+    link.flush()
+    if written != len(trigger) + len(payload):
+        print(f"FAIL T8: wrote {written}/{len(trigger) + len(payload)} bytes", file=sys.stderr)
+        return False
+
+    # A flushed byte echoed before the marker would show up as a mismatch here.
+    expected_bytes = trigger + marker
+    received = link.read(len(expected_bytes))
+    if received != expected_bytes:
+        print(
+            f"FAIL T8: expected trigger echo then {marker!r}; "
+            f"mismatch at byte {first_mismatch(received, expected_bytes)}, "
+            f"received {len(received)}/{len(expected_bytes)} bytes ({received.hex(' ')})",
+            file=sys.stderr,
+        )
+        return False
+
+    written = link.write(line)
+    link.flush()
+    if written != len(line):
+        print(f"FAIL T8: wrote {written}/{len(line)} bytes", file=sys.stderr)
+        return False
+    echoed = link.read(len(line))
+    if echoed != line:
+        print(
+            f"FAIL T8: valid-line echo differs at byte {first_mismatch(echoed, line)}; "
+            f"received {len(echoed)}/{len(line)} bytes ({echoed.hex(' ')})",
+            file=sys.stderr,
+        )
+        return False
+
+    if not check_no_extra(link, "T8", expected):
+        return False
+
+    print(
+        f"PASS T8: {len(payload)} bytes flushed, {marker.decode('ascii').strip()} "
+        "reported; following line echoed identically"
+    )
+    return True
+
+
 TESTS = {
     "T1": test_t1_nominal_receive,
     "T2": test_t2_burst_receive,
@@ -527,6 +588,7 @@ TESTS = {
     "T5": test_t5_overrun,
     "T6": test_t6_buffer_overflow,
     "T7": test_t7_no_irq_storm,
+    "T8": test_t8_flush,
 }
 
 
