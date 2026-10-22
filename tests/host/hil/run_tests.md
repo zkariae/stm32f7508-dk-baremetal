@@ -5,7 +5,7 @@
 \brief      Commands to run the UART RX HIL tests.
 
 \author     Z. BEN-AKKA
-\version    1.6
+\version    1.7
 \date       22/10/2026
 
 \details
@@ -24,6 +24,7 @@
 | 1.4     | 22/10/2026 | Z. BEN-AKKA | Add T8 RX flush run.                           |
 | 1.5     | 22/10/2026 | Z. BEN-AKKA | Use the renamed uart_rx_check.py script.       |
 | 1.6     | 22/10/2026 | Z. BEN-AKKA | Run-all command alone; bench delays; 6 s runs. |
+| 1.7     | 22/10/2026 | Z. BEN-AKKA | Flash the uart-diag image before T1 to T8.     |
 ****************************
 -->
 
@@ -35,7 +36,7 @@ All commands run from the repository root.
 
 ```bash
 python3 -m pip install pyserial pyyaml   # host dependencies
-make hil-bench-flash                     # flash the raw-echo bench firmware
+make uart-diag-flash                     # flash the raw-echo UART diagnostic image
 ```
 
 ## Run all tests

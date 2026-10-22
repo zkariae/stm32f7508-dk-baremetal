@@ -4,7 +4,7 @@
 # \brief      HIL bench configuration: serial port, baud rate, delays and hardware options.
 #
 # \author     Z. BEN-AKKA
-# \version    1.2
+# \version    1.3
 # \date       22/10/2026
 #
 # \details
@@ -18,6 +18,7 @@
 # | 1.0     | 19/10/2026 | Z. BEN-AKKA | Initial version.            |
 # | 1.1     | 22/10/2026 | Z. BEN-AKKA | Refer to uart_rx_check.py.  |
 # | 1.2     | 22/10/2026 | Z. BEN-AKKA | Add extra_byte_wait delay.  |
+# | 1.3     | 22/10/2026 | Z. BEN-AKKA | Add uart-diag firmware target. |
 # ****************************
 
 schema_version: 1
@@ -45,5 +46,6 @@ hardware:
   board: stm32f7508-dk
   programmer: stlink          # stlink | dfu (Makefile -flash / -dfu targets)
   firmware_target: hil-bench  # make hil-bench-flash
+  diag_firmware_target: uart-diag  # make uart-diag-flash, uart_rx_check.py T1-T8
   instruments:
     enabled: false            # optional, plan_test_hil.md section 1
