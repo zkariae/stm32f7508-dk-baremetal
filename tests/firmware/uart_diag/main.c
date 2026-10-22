@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: MIT
 /*!
 ****************************
-\file       hil_bench/main.c
-\brief      Initialize USART1 and echo received HIL test bytes.
+\file       uart_diag/main.c
+\brief      UART diagnostic image: echo received bytes and report RX errors.
 
 \author     Z. BEN-AKKA
-\version    1.8
-\date       21/10/2026
+\version    1.9
+\date       22/10/2026
 
 \details
-  Starts USART1 at 115200 baud and echoes received bytes for the host-side
-  UART RX smoke tests. It echoes received bytes and reports framing errors
-  with [FE], noise errors with [NE], overrun errors with [ORE] and RX queue
-  overflows with [FULL]. This diagnostic output is temporary and is not the
-  HIL protocol. Markers are deferred until the next valid byte, so the host has
-  restored its baud rate before they are sent.
+  Firmware of the uart-diag image, the regression suite of the UART driver
+  run by tests/host/hil/uart_rx_check.py (T1 to T8). It is separate from the
+  hil-bench protocol firmware, which sends no output outside the protocol.
+  Starts USART1 at 115200 baud, echoes received bytes and reports framing
+  errors with [FE], noise errors with [NE], overrun errors with [ORE] and RX
+  queue overflows with [FULL]. Markers are deferred until the next valid byte,
+  so the host has restored its baud rate before they are sent.
   - After echoing the line OVR_TEST, interrupts are masked for 2 ms so that
     the bytes that follow cause a hardware overrun (T5).
   - After echoing the line FULL_TEST, the queue is not read for 100 ms, with
@@ -25,7 +26,7 @@
     UartRxFlush() empties it. The bench sends [EMPTY n=<count>] with the
     number of bytes flushed, or [NOT_EMPTY] if a byte is still queued (T8).
 
-\section hil_bench_main_c_version_history Version history
+\section uart_diag_main_c_version_history Version history
 | Version | Date       | Author      | Description                                  |
 |:-------:|:----------:|:------------|:---------------------------------------------|
 | 1.0     | 14/10/2026 | Z. BEN-AKKA | Initial version.                             |
@@ -37,6 +38,7 @@
 | 1.6     | 21/10/2026 | Z. BEN-AKKA | Report deferred [FULL]; stop reading 100 ms on FULL_TEST for T6. |
 | 1.7     | 21/10/2026 | Z. BEN-AKKA | Blink LD1 at 2 Hz from the main loop for T7. |
 | 1.8     | 21/10/2026 | Z. BEN-AKKA | Flush the RX queue on FLUSH_TEST and report [EMPTY n=] for T8. |
+| 1.9     | 22/10/2026 | Z. BEN-AKKA | Move from hil_bench/ to the separate uart-diag image. |
 ****************************
 */
 
