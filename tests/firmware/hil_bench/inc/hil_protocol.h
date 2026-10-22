@@ -1,0 +1,98 @@
+// SPDX-License-Identifier: MIT
+/**
+****************************
+\file       hil_bench/inc/hil_protocol.h
+\brief      Minimal HIL protocol constants for the bench firmware.
+
+\author     Z. BEN-AKKA
+\version    1.0
+\date       16/10/2026
+
+\details
+  Defines only the fixed UART and readiness-banner values needed by the HIL
+  firmware entry point.
+
+\section hil_protocol_h_version_history Version history
+| Version | Date       | Author      | Description                      |
+|:-------:|:----------:|:------------|:---------------------------------|
+| 1.0     | 16/10/2026 | Z. BEN-AKKA | Initial version.                 |
+****************************
+*/
+
+#ifndef HIL_PROTOCOL_H
+#define HIL_PROTOCOL_H
+
+/* UART link (protocol section 2.1). */
+#define HIL_UART_BAUDRATE 115200u
+
+/* ---- Protocol version (section 3) -------------------------------------- */
+#define HIL_PROTO_VERSION_MAJOR 1u
+#define HIL_PROTO_VERSION_MINOR 0u
+#define HIL_PROTO_VERSION_STR   "1.0"
+
+/* ---- Line framing (section 2.2) ---------------------------------------- */
+/** Maximum line length in bytes, excluding the terminator. */
+#define HIL_LINE_MAX_LEN 128u
+/** Line buffer size: maximum line plus CR and LF. */
+#define HIL_LINE_BUF_SIZE (HIL_LINE_MAX_LEN + 2u)
+#define HIL_CHAR_MIN 0x20u
+#define HIL_CHAR_MAX 0x7Eu
+
+/* ---- Record types (sections 4 and 5) ----------------------------------- */
+#define HIL_REC_READY  "READY"
+#define HIL_REC_CMD    "CMD"
+#define HIL_REC_RESULT "RESULT"
+#define HIL_REC_END    "END"
+#define HIL_REC_ERROR  "ERROR"
+
+/* ---- Reserved keys (sections 5.1, 5.2.1, and 7.1) ---------------------- */
+#define HIL_KEY_ID      "id"
+#define HIL_KEY_COMMAND "command"
+#define HIL_KEY_STATUS  "status"
+#define HIL_KEY_CODE    "code"
+#define HIL_KEY_DETAIL  "detail"
+
+#define HIL_STATUS_OK   "OK"
+#define HIL_STATUS_ERR  "ERR"
+
+/* ---- Transaction IDs (section 5.1) ------------------------------------- */
+#define HIL_ID_MIN 1u
+#define HIL_ID_MAX 65535u
+
+/* ---- Commands (section 6) ---------------------------------------------- */
+#define HIL_CMD_NAME_MAX_LEN 32u
+#define HIL_CMD_HELLO        "HELLO"
+#define HIL_CMD_CAPS         "CAPS"
+#define HIL_CAPS_TOTAL_MIN   2u
+#define HIL_CAPS_TOTAL_MAX   255u
+
+/* ---- Response codes (section 7.1) -------------------------------------- */
+#define HIL_ERR_BAD_REQUEST     "BAD_REQUEST"
+#define HIL_ERR_UNKNOWN_COMMAND "UNKNOWN_COMMAND"
+#define HIL_ERR_INVALID_ARGUMENT "INVALID_ARGUMENT"
+#define HIL_ERR_BUSY            "BUSY"
+#define HIL_ERR_DEVICE_TIMEOUT  "DEVICE_TIMEOUT"
+#define HIL_ERR_DEVICE_ERROR    "DEVICE_ERROR"
+#define HIL_ERR_INTERNAL        "INTERNAL"
+
+/* ---- Frame codes (section 7.2) ----------------------------------------- */
+#define HIL_FRAME_LINE_TOO_LONG "LINE_TOO_LONG"
+#define HIL_FRAME_BAD_FRAME     "BAD_FRAME"
+
+/* ---- Readiness banner field limits (section 4.1) ----------------------- */
+#define HIL_BANNER_NAME_MAX_LEN       16u
+#define HIL_BANNER_FW_MAX_LEN         16u
+#define HIL_BANNER_PROTO_MAX_LEN      7u
+#define HIL_BANNER_BUILD_MAX_LEN      18u
+#define HIL_BANNER_RESET_MAX_LEN      7u
+#define HIL_BANNER_RESET_FLAGS_LEN    10u
+
+/* ---- Firmware identity (section 4.1) ----------------------------------- */
+#define HIL_FW_NAME         "hil-bench"
+
+/* Readiness banner values (protocol section 4.1). */
+#define HIL_FW_VERSION      "1.0.0"
+#define HIL_BUILD_ID        "unknown"
+#define HIL_RESET_UNKNOWN   "unknown"
+
+#endif /* HIL_PROTOCOL_H */
