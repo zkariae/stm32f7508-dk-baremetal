@@ -5,12 +5,12 @@
 \brief      UART diagnostic image: echo received bytes and report RX errors.
 
 \author     Z. BEN-AKKA
-\version    1.9
-\date       22/10/2026
+\version    1.10
+\date       23/10/2026
 
 \details
   Firmware of the uart-diag image, the regression suite of the UART driver
-  run by tests/host/hil/uart_rx_check.py (T1 to T8). It is separate from the
+  run by tests/host/rx_check/uart_rx_check.py (T1 to T8). It is separate from the
   hil-bench protocol firmware, which sends no output outside the protocol.
   Starts USART1 at 115200 baud, echoes received bytes and reports framing
   errors with [FE], noise errors with [NE], overrun errors with [ORE] and RX
@@ -39,6 +39,7 @@
 | 1.7     | 21/10/2026 | Z. BEN-AKKA | Blink LD1 at 2 Hz from the main loop for T7. |
 | 1.8     | 21/10/2026 | Z. BEN-AKKA | Flush the RX queue on FLUSH_TEST and report [EMPTY n=] for T8. |
 | 1.9     | 22/10/2026 | Z. BEN-AKKA | Move from hil_bench/ to the separate uart-diag image. |
+| 1.10    | 23/10/2026 | Z. BEN-AKKA | Point to the host script in tests/host/rx_check/. |
 ****************************
 */
 
