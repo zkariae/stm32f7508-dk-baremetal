@@ -38,12 +38,17 @@ Les applications produit restent dans `dev/`. Le firmware de validation et les t
     │       ├── commands.c           # Commandes de validation des périphériques
     │       └── commands.h
     └── host/
-        └── hil/
+        ├── config/
+        │   └── bench.yaml            # Banc commun à rx_check/ et hil/ : port, débit, délais, options matérielles
+        ├── rx_check/                 # Régression du pilote UART (image uart-diag)
+        │   ├── uart_rx_check.py      # Tests T1 à T8
+        │   ├── plans/
+        │   │   └── uart_rx.yaml      # Paramètres et résultats attendus de T1 à T8
+        │   └── run_tests.md          # Commandes de lancement
+        └── hil/                      # Tests du protocole (image hil-bench)
             ├── pyproject.toml        # Dépendances Python et configuration pytest
             ├── pytest.ini            # Marqueurs et options de test
             ├── run_hil.py            # Point d’entrée d’une campagne
-            ├── config/
-            │   └── bench.yaml        # Port, débit, délais et options matérielles
             ├── adapters/
             │   ├── serial_adapter.py # Dialogue avec le firmware
             │   ├── programmer.py     # Build/flash par les outils du dépôt
