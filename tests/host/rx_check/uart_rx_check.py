@@ -3,13 +3,13 @@
 
 The board must run the uart-diag image (make uart-diag-flash), the raw-echo
 UART driver diagnostic. It is separate from the hil-bench protocol firmware.
-Serial settings, timeouts and delays come from config/bench.yaml; command-line
-options override them. Test parameters and expected results come from
-plans/uart_rx.yaml.
+Serial settings, timeouts and delays come from tests/host/config/bench.yaml;
+command-line options override them. Test parameters and expected results come
+from rx_check/plans/uart_rx.yaml.
 Requires pyserial and PyYAML: python -m pip install pyserial pyyaml
 
-Version: 1.18
-Date: 22/10/2026
+Version: 1.19
+Date: 23/10/2026
 Author: Z. BEN-AKKA
 History:
   1.0  16/10/2026  Initial host-side UART echo check.
@@ -31,6 +31,7 @@ History:
   1.16 22/10/2026  Rename from uart_tx_check.py: the script runs the UART RX plan.
   1.17 22/10/2026  Wait extra_byte_wait, not the read timeout, in the extra-byte check.
   1.18 22/10/2026  Require the uart-diag image instead of a raw-echo build mode.
+  1.19 23/10/2026  Move to rx_check/; read the shared tests/host/config/bench.yaml.
 """
 
 import argparse
@@ -51,9 +52,9 @@ except ImportError:
     print("PyYAML is required: python -m pip install pyyaml", file=sys.stderr)
     raise SystemExit(2)
 
-HIL_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG = HIL_DIR / "config" / "bench.yaml"
-DEFAULT_PLAN = HIL_DIR / "plans" / "uart_rx.yaml"
+RX_CHECK_DIR = Path(__file__).resolve().parent
+DEFAULT_CONFIG = RX_CHECK_DIR.parent / "config" / "bench.yaml"  # Shared with hil/
+DEFAULT_PLAN = RX_CHECK_DIR / "plans" / "uart_rx.yaml"
 SUPPORTED_SCHEMA = 1
 PARITIES = {"none": serial.PARITY_NONE, "even": serial.PARITY_EVEN, "odd": serial.PARITY_ODD}
 FLOW_CONTROLS = ("none", "rtscts", "xonxoff")
