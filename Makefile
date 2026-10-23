@@ -5,8 +5,8 @@
 # \brief      Build, flash and document project images for a board.
 #
 # \author     Z. BEN-AKKA
-# \version    1.8
-# \date       22/10/2026
+# \version    1.9
+# \date       23/10/2026
 #
 # \details
 #   Says what to build: the applications, their sources, modules and
@@ -18,8 +18,9 @@
 #   recipes (board_compile, board_link, board_flash...) that the rules below
 #   only call. Applications and test images are declared as images; the rules
 #   for every image come from the IMAGE template. Both test images link the
-#   shared GPIO, UART and LED modules. hil-bench also gets hil_build.h, the
-#   git revision it was built from, for its readiness banner.
+#   shared GPIO, UART and LED modules; hil-bench adds its protocol modules
+#   and headers. hil-bench also gets hil_build.h, the git revision it was
+#   built from, for its readiness banner.
 #     make 01-blink            build one application
 #     make 01-blink-flash      build and flash it with the ST-LINK
 #     make BOARD=<name> ...    build for another board folder
@@ -37,6 +38,7 @@
 # | 1.6     | 21/10/2026 | Z. BEN-AKKA | Link the LED module into the HIL bench image for T7.        |
 # | 1.7     | 22/10/2026 | Z. BEN-AKKA | Add the uart-diag image for the UART RX checks.             |
 # | 1.8     | 22/10/2026 | Z. BEN-AKKA | Generate the hil-bench build ID from the git revision.      |
+# | 1.9     | 23/10/2026 | Z. BEN-AKKA | Link the protocol modules into the hil-bench image.         |
 # ****************************
 # */
 
@@ -83,11 +85,12 @@ $(foreach a,$(SINGLE),$(eval $(a)_SRCS := $(APPS_DIR)/$(a)/main.c))
 06-lcd-layer_MODULES     := delay fb gpio ltdc rcc uart
 07-lcd-logo_MODULES      := delay fb gpio ltdc rcc uart
 
-# Hardware-in-the-loop bench firmware
-hil-bench_IMAGES := hil-bench
-hil-bench_SRCS   := tests/firmware/hil_bench/main.c
+# Hardware-in-the-loop bench firmware: the protocol of tests/protocol.md
+HIL_BENCH := tests/firmware/hil_bench
+hil-bench_IMAGES  := hil-bench
+hil-bench_SRCS    := $(addprefix $(HIL_BENCH)/,main.c reset_cause.c line.c protocol.c dispatch.c commands.c)
 hil-bench_MODULES := gpio uart led
-hil-bench_CFLAGS  := -I$(BUILD)/hil-bench
+hil-bench_CFLAGS  := -I$(HIL_BENCH)/inc -I$(BUILD)/hil-bench
 
 # UART driver diagnostic: raw echo and RX error markers (uart_rx_check.py T1-T8)
 uart-diag_IMAGES  := uart-diag
@@ -237,7 +240,9 @@ HIL_REV   := $(shell git rev-parse --short=7 HEAD 2>/dev/null)
 HIL_BUILD := $(if $(HIL_REV),$(HIL_REV)$(shell git diff --quiet HEAD -- 2>/dev/null || echo -dirty),unknown)
 HIL_BUILD_H := $(BUILD)/hil-bench/hil_build.h
 
-$(BUILD)/hil-bench/main.o: $(HIL_BUILD_H)
+# Generated before any hil-bench object; then the .d files rebuild the objects
+# that include it when the ID changes
+$(hil-bench_OBJS): | $(HIL_BUILD_H)
 
 # Checked on every make, rewritten only when the ID changes: an unchanged
 # tree rebuilds nothing
