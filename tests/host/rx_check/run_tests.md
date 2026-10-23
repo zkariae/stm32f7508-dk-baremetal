@@ -1,18 +1,18 @@
 <!-- SPDX-License-Identifier: MIT -->
 <!--
 ****************************
-\file       tests/host/hil/run_tests.md
+\file       tests/host/rx_check/run_tests.md
 \brief      Commands to run the UART RX HIL tests.
 
 \author     Z. BEN-AKKA
-\version    1.7
-\date       22/10/2026
+\version    1.8
+\date       23/10/2026
 
 \details
   Lists the commands to run the UART RX tests T1 to T8, all together or one
   at a time, and the options that override the default files and settings.
-  Test definitions are in plans/uart_rx.yaml; bench settings are in
-  config/bench.yaml.
+  Test definitions are in rx_check/plans/uart_rx.yaml; bench settings are in
+  tests/host/config/bench.yaml, shared with the hil/ protocol tests.
 
 \section run_tests_md_version_history Version history
 | Version | Date       | Author      | Description                                    |
@@ -25,6 +25,7 @@
 | 1.5     | 22/10/2026 | Z. BEN-AKKA | Use the renamed uart_rx_check.py script.       |
 | 1.6     | 22/10/2026 | Z. BEN-AKKA | Run-all command alone; bench delays; 6 s runs. |
 | 1.7     | 22/10/2026 | Z. BEN-AKKA | Flash the uart-diag image before T1 to T8.     |
+| 1.8     | 23/10/2026 | Z. BEN-AKKA | Move to rx_check/; shared bench config path.   |
 ****************************
 -->
 
@@ -42,7 +43,7 @@ make uart-diag-flash                     # flash the raw-echo UART diagnostic im
 ## Run all tests
 
 ```bash
-python3 tests/host/hil/uart_rx_check.py
+python3 tests/host/rx_check/uart_rx_check.py
 ```
 
 Runs T1 to T8 in plan order. T7 prints
@@ -51,14 +52,14 @@ Runs T1 to T8 in plan order. T7 prints
 ## Run one test
 
 ```bash
-python3 tests/host/hil/uart_rx_check.py --only T1     # Nominal reception
-python3 tests/host/hil/uart_rx_check.py --only T2     # Burst reception
-python3 tests/host/hil/uart_rx_check.py --only T3     # Framing error
-python3 tests/host/hil/uart_rx_check.py --only T4     # Wrong baud rate
-python3 tests/host/hil/uart_rx_check.py --only T5     # Hardware overrun
-python3 tests/host/hil/uart_rx_check.py --only T6     # RX buffer overflow
-python3 tests/host/hil/uart_rx_check.py --only T3 T4 T5 T6 T7   # No interrupt storm
-python3 tests/host/hil/uart_rx_check.py --only T8     # RX flush
+python3 tests/host/rx_check/uart_rx_check.py --only T1     # Nominal reception
+python3 tests/host/rx_check/uart_rx_check.py --only T2     # Burst reception
+python3 tests/host/rx_check/uart_rx_check.py --only T3     # Framing error
+python3 tests/host/rx_check/uart_rx_check.py --only T4     # Wrong baud rate
+python3 tests/host/rx_check/uart_rx_check.py --only T5     # Hardware overrun
+python3 tests/host/rx_check/uart_rx_check.py --only T6     # RX buffer overflow
+python3 tests/host/rx_check/uart_rx_check.py --only T3 T4 T5 T6 T7   # No interrupt storm
+python3 tests/host/rx_check/uart_rx_check.py --only T8     # RX flush
 ```
 
 T7 must run after T3 to T6 in the same run: `--only T7` alone is refused
@@ -67,8 +68,8 @@ T7 must run after T3 to T6 in the same run: `--only T7` alone is refused
 ## Run a selection
 
 ```bash
-python3 tests/host/hil/uart_rx_check.py --only T3 T4  # runs in plan order
-python3 tests/host/hil/uart_rx_check.py /dev/ttyACM1 --only T3 T4   # port before --only
+python3 tests/host/rx_check/uart_rx_check.py --only T3 T4  # runs in plan order
+python3 tests/host/rx_check/uart_rx_check.py /dev/ttyACM1 --only T3 T4   # port before --only
 ```
 
 `--only` takes every following word as a test ID, so put the port before it.
@@ -76,7 +77,7 @@ python3 tests/host/hil/uart_rx_check.py /dev/ttyACM1 --only T3 T4   # port befor
 ## Repeat a run
 
 ```bash
-for i in $(seq 10); do python3 tests/host/hil/uart_rx_check.py; done   # about 6 s per run
+for i in $(seq 10); do python3 tests/host/rx_check/uart_rx_check.py; done   # about 6 s per run
 ```
 
 ## Options
@@ -85,35 +86,35 @@ for i in $(seq 10); do python3 tests/host/hil/uart_rx_check.py; done   # about 6
 |:--|:--|:--|
 | `port` | `serial.port` in `bench.yaml` | Serial port, e.g. `/dev/ttyACM0` or `COM5` |
 | `--only ID ...` | all plan tests | Test IDs to run |
-| `--plan FILE` | `plans/uart_rx.yaml` | Test plan |
-| `--config FILE` | `config/bench.yaml` | Bench configuration |
+| `--plan FILE` | `rx_check/plans/uart_rx.yaml` | Test plan |
+| `--config FILE` | `tests/host/config/bench.yaml` | Bench configuration |
 | `--baud N` | `serial.baudrate` in `bench.yaml` | Bench baud rate |
 | `--timeout S` | `timeouts.read` in `bench.yaml` | Read timeout in seconds |
 
 ```bash
 # Serial port
-python3 tests/host/hil/uart_rx_check.py /dev/ttyACM1
+python3 tests/host/rx_check/uart_rx_check.py /dev/ttyACM1
 
 # Test plan
-python3 tests/host/hil/uart_rx_check.py --plan path/to/my_plan.yaml
+python3 tests/host/rx_check/uart_rx_check.py --plan path/to/my_plan.yaml
 
 # Bench configuration
-python3 tests/host/hil/uart_rx_check.py --config path/to/my_bench.yaml
+python3 tests/host/rx_check/uart_rx_check.py --config path/to/my_bench.yaml
 
 # Bench baud rate (must match the firmware, otherwise the tests fail)
-python3 tests/host/hil/uart_rx_check.py --baud 115200
+python3 tests/host/rx_check/uart_rx_check.py --baud 115200
 
 # Read timeout in seconds
-python3 tests/host/hil/uart_rx_check.py --timeout 5
+python3 tests/host/rx_check/uart_rx_check.py --timeout 5
 
 # Options combined
-python3 tests/host/hil/uart_rx_check.py /dev/ttyACM1 --only T4 --timeout 5
+python3 tests/host/rx_check/uart_rx_check.py /dev/ttyACM1 --only T4 --timeout 5
 
 # List all options
-python3 tests/host/hil/uart_rx_check.py --help
+python3 tests/host/rx_check/uart_rx_check.py --help
 ```
 
-Bench delays have no command-line option; change them in `config/bench.yaml`:
+Bench delays have no command-line option; change them in `tests/host/config/bench.yaml`:
 
 | Key | Default | Purpose |
 |:--|:--|:--|
