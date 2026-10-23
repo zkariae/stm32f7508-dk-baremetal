@@ -5,7 +5,7 @@
 \brief      HIL firmware-to-host protocol specification.
 
 \author     Z. BEN-AKKA
-\version    1.2
+\version    1.3
 \date       22/10/2026
 
 \details
@@ -20,6 +20,7 @@
 | 1.0     | 14/10/2026 | Z. BEN-AKKA | Initial version.                         |
 | 1.1     | 16/10/2026 | Z. BEN-AKKA | Formalize HIL records, commands, reset reporting, and recovery. |
 | 1.2     | 22/10/2026 | Z. BEN-AKKA | Update §2.4 note: the UART driver now receives. |
+| 1.3     | 22/10/2026 | Z. BEN-AKKA | Add noise and RX overflow to BAD_FRAME; report line errors once at the terminator. |
 ****************************
 -->
 
@@ -116,17 +117,20 @@ link. Debug or other non-protocol output SHALL NOT be sent on it.
 - If a received line exceeds the maximum length, the firmware SHALL discard
   all bytes up to and including the next terminator. It SHALL then send
   `ERROR code=LINE_TOO_LONG` once.
-- If a received line contains a byte outside 0x20 to 0x7E, or a UART framing
-  or overrun error occurs while it is being received, the firmware SHALL
-  discard the line and send `ERROR code=BAD_FRAME`.
+- If a received line contains a byte outside 0x20 to 0x7E, or a UART framing,
+  noise or overrun error or a receive-buffer overflow occurs while it is being
+  received, the firmware SHALL discard all bytes up to and including the next
+  terminator. It SHALL then send `ERROR code=BAD_FRAME` once.
+- If a line both exceeds the maximum length and contains such an error, the
+  firmware SHALL send `ERROR code=LINE_TOO_LONG` only (see section 5.2.2).
 - If the host receives a line from the firmware that violates sections 2.2 or
   2.3, it SHALL treat it as a protocol failure, except during startup (see
   section 4.1).
 
-> **Note (informative):** The shared UART driver now receives into a bounded
-> queue and reports framing, noise, overrun and queue-full events. The
-> firmware must still assemble lines from these events before it can conform
-> to this section.
+> **Note (informative):** A CR that is not immediately followed by LF is a
+> byte outside 0x20 to 0x7E. An error that occurs between two lines belongs to
+> the next line, which is then reported as `BAD_FRAME` when its terminator is
+> received.
 
 ## 3. Versioning and compatibility
 
@@ -568,7 +572,7 @@ The firmware sends these codes in an uncorrelated record
 | Code | Condition |
 |:--|:--|
 | `LINE_TOO_LONG` | A received line exceeds the maximum line length. |
-| `BAD_FRAME` | A received line contains an invalid byte, was affected by a UART framing or overrun error, does not start with `CMD`, or has a missing or invalid `id`. |
+| `BAD_FRAME` | A received line contains an invalid byte, was affected by a UART framing, noise or overrun error or by a receive-buffer overflow, does not start with `CMD`, or has a missing or invalid `id`. |
 
 The host SHALL treat any `ERROR` record as a protocol failure.
 
