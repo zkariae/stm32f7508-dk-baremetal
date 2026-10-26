@@ -4,8 +4,8 @@
 # \brief      HIL bench configuration: serial port, baud rate, delays and hardware options.
 #
 # \author     Z. BEN-AKKA
-# \version    1.4
-# \date       23/10/2026
+# \version    1.5
+# \date       26/10/2026
 #
 # \details
 #   Bench-specific settings shared by the host-side tools: rx_check/ (UART
@@ -22,6 +22,7 @@
 # | 1.2     | 22/10/2026 | Z. BEN-AKKA | Add extra_byte_wait delay.  |
 # | 1.3     | 22/10/2026 | Z. BEN-AKKA | Add uart-diag firmware target. |
 # | 1.4     | 23/10/2026 | Z. BEN-AKKA | Move to tests/host/config/, shared by rx_check and hil. |
+# | 1.5     | 26/10/2026 | Z. BEN-AKKA | Add reset target, expected build, results dir and make timeout. |
 # ****************************
 
 schema_version: 1
@@ -38,9 +39,10 @@ timeouts:                     # seconds
   startup: 5.0                # protocol.md section 8.1
   response: 2.0               # HELLO/CAPS, protocol.md section 6
   read: 2.0                   # uart_rx_check.py --timeout default
+  make: 120.0                 # hil programmer.py: build and flash, or reset
 
 delays:                       # seconds
-  port_open_settle: 0.1       # uart_rx_check.py, after opening the port
+  port_open_settle: 0.1       # after opening the port; hil: also before each reset
   baud_switch_settle: 0.05    # uart_rx_check.py, T3 baud switch
   # The firmware answers within a few ms; a stray byte would follow at once.
   extra_byte_wait: 0.2        # uart_rx_check.py, wait for an unexpected byte
@@ -50,5 +52,13 @@ hardware:
   programmer: stlink          # stlink | dfu (Makefile -flash / -dfu targets)
   firmware_target: hil-bench  # make hil-bench-flash
   diag_firmware_target: uart-diag  # make uart-diag-flash, uart_rx_check.py T1-T8
+  reset_target: reset         # make reset: OpenOCD drives NRST, banner reset=PIN
   instruments:
     enabled: false            # optional, plan_test_hil.md section 1
+
+firmware:                     # hil: identity checks, protocol.md section 6.2
+  # auto: the build of the flashed image (hil_build.h); a value; or null to skip
+  expected_build: auto
+  accept_build_mismatch: false  # true: report BUILD_MISMATCH as a warning only
+
+results_dir: work/hil-results # hil: pytest log, relative to the repository root
