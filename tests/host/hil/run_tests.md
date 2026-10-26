@@ -5,7 +5,7 @@
 \brief      Commands to run the HIL protocol tests with pytest.
 
 \author     Z. BEN-AKKA
-\version    1.0
+\version    1.1
 \date       26/10/2026
 
 \details
@@ -18,6 +18,7 @@
 | Version | Date       | Author      | Description      |
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 26/10/2026 | Z. BEN-AKKA | Initial version. |
+| 1.1     | 26/10/2026 | Z. BEN-AKKA | Add the live display of make, TX and RX lines. |
 ****************************
 -->
 
@@ -51,10 +52,29 @@ CAPS before the first test.
 
 ```bash
 python3 -m pytest tests/host/hil -v                         # one line per test
+python3 -m pytest tests/host/hil --log-cli-level=INFO       # show make commands, TX and RX lines
 python3 -m pytest tests/host/hil --no-flash                 # test the image already on the board
 python3 -m pytest tests/host/hil -m smoke                   # banner, HELLO and CAPS only
 python3 -m pytest tests/host/hil --port /dev/ttyACM1        # another serial port
 python3 -m pytest tests/host/hil --junitxml=work/hil-results/junit.xml   # JUnit report
+```
+
+## Live display
+
+`--log-cli-level=INFO` prints, under each test, the make commands run on the
+board, every line sent to the firmware (`TX`) and every line received from it
+(`RX`), decoded as text. A line that holds a byte outside 0x20-0x7E is shown
+as escaped bytes, for example `TX  b'CMD id=20 command=HE\x7fLLO'`. The
+OpenOCD output is not shown; it stays in `work/hil-results/pytest.log`
+(`--log-cli-level=DEBUG` shows it too).
+
+```text
+10:42:01 RUN make reset
+10:42:02 RX  READY name=hil-bench fw=1.0.0 proto=1.0 build=3a03de9 reset=PIN reset_flags=0x04000000
+10:42:02 session started: READY name=hil-bench fw=1.0.0 proto=1.0 build=3a03de9 reset=PIN reset_flags=0x04000000
+10:42:02 TX  CMD id=1 command=HELLO
+10:42:02 RX  RESULT id=1 status=OK name=hil-bench proto=1.0 fw=1.0.0 build=3a03de9
+10:42:02 RX  END id=1
 ```
 
 ## Options
@@ -65,6 +85,7 @@ python3 -m pytest tests/host/hil --junitxml=work/hil-results/junit.xml   # JUnit
 | `--no-flash` | flash | Do not flash; with `expected_build: auto`, the last build is still expected |
 | `--bench-config FILE` | `tests/host/config/bench.yaml` | Bench configuration |
 | `--log-file FILE` | `work/hil-results/pytest.log` | Log of every serial line and make output |
+| `--log-cli-level=INFO` | off | Show make commands, TX and RX lines live in the terminal |
 
 ```bash
 # Serial port
@@ -78,6 +99,9 @@ python3 -m pytest tests/host/hil --bench-config path/to/my_bench.yaml
 
 # Log file
 python3 -m pytest tests/host/hil --log-file work/hil-results/run1.log
+
+# Live display of make commands, TX and RX lines
+python3 -m pytest tests/host/hil --no-flash --log-cli-level=INFO
 
 # One test, by name
 python3 -m pytest tests/host/hil -k test_hello_matches_banner
