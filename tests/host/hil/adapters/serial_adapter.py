@@ -9,13 +9,16 @@ Implements the host side of protocol.md sections 2, 5.1 and 5.2:
   END before RESULT, a second RESULT, an ERROR record or the timeout raise
   ProtocolFailure (section 5.2.3); a READY record raises UnexpectedReset
   (section 4.3).
-Every line sent and received is logged on the hil.serial logger.
+Every line sent and received is logged at INFO on the hil.serial logger, as
+text, or as escaped bytes when it holds a byte outside 0x20-0x7E; pytest
+--log-cli-level=INFO shows them live in the terminal.
 
-Version: 1.0
+Version: 1.1
 Date: 26/10/2026
 Author: Z. BEN-AKKA
 History:
   1.0  26/10/2026  Initial version.
+  1.1  26/10/2026  Log TX and RX lines at INFO, non-printable bytes escaped.
 """
 
 import logging
@@ -36,6 +39,13 @@ VALUE_RE = re.compile(r"[\x21-\x3c\x3e-\x7e]+")  # Printable, without space and 
 RESULT_RESERVED = ("id", "status", "code")
 
 log = logging.getLogger("hil.serial")
+
+
+def show(data: bytes) -> str:
+    """Log form of a line: its text if printable ASCII, else the escaped bytes."""
+    if all(0x20 <= byte <= 0x7E for byte in data):
+        return data.decode("ascii")
+    return repr(data)
 
 
 class RecordError(ValueError):
@@ -151,7 +161,7 @@ class SerialAdapter:
         self._pending = b""
 
     def send_line(self, line: str) -> None:
-        log.debug("TX %s", line)
+        log.info("TX  %s", line)
         self._port.write(line.encode("ascii") + b"\r\n")
         self._port.flush()
 
@@ -165,9 +175,8 @@ class SerialAdapter:
                 raw, self._pending = self._pending[:end], self._pending[end + 1 :]
                 if raw.endswith(b"\r"):
                     raw = raw[:-1]
-                line = raw.decode("latin-1")
-                log.debug("RX %s", line)
-                return line
+                log.info("RX  %s", show(raw))
+                return raw.decode("latin-1")
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return None
