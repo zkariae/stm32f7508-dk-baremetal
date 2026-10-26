@@ -4,7 +4,7 @@
 # \brief      HIL bench configuration: serial port, baud rate, delays and hardware options.
 #
 # \author     Z. BEN-AKKA
-# \version    1.5
+# \version    1.6
 # \date       26/10/2026
 #
 # \details
@@ -23,6 +23,7 @@
 # | 1.3     | 22/10/2026 | Z. BEN-AKKA | Add uart-diag firmware target. |
 # | 1.4     | 23/10/2026 | Z. BEN-AKKA | Move to tests/host/config/, shared by rx_check and hil. |
 # | 1.5     | 26/10/2026 | Z. BEN-AKKA | Add reset target, expected build, results dir and make timeout. |
+# | 1.6     | 26/10/2026 | Z. BEN-AKKA | Add the software reset target; hil uses the RX check delays. |
 # ****************************
 
 schema_version: 1
@@ -43,9 +44,9 @@ timeouts:                     # seconds
 
 delays:                       # seconds
   port_open_settle: 0.1       # after opening the port; hil: also before each reset
-  baud_switch_settle: 0.05    # uart_rx_check.py, T3 baud switch
+  baud_switch_settle: 0.05    # uart_rx_check.py T3 and hil frame error: baud switch
   # The firmware answers within a few ms; a stray byte would follow at once.
-  extra_byte_wait: 0.2        # uart_rx_check.py, wait for an unexpected byte
+  extra_byte_wait: 0.2        # uart_rx_check.py: unexpected byte; hil: silence after a record
 
 hardware:
   board: stm32f7508-dk
@@ -53,6 +54,7 @@ hardware:
   firmware_target: hil-bench  # make hil-bench-flash
   diag_firmware_target: uart-diag  # make uart-diag-flash, uart_rx_check.py T1-T8
   reset_target: reset         # make reset: OpenOCD drives NRST, banner reset=PIN
+  reset_sw_target: reset-sw   # make reset-sw: SYSRESETREQ, banner reset=SW
   instruments:
     enabled: false            # optional, plan_test_hil.md section 1
 
