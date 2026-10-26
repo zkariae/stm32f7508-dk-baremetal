@@ -9,16 +9,23 @@ Implements the host side of protocol.md sections 2, 5.1 and 5.2:
   END before RESULT, a second RESULT, an ERROR record or the timeout raise
   ProtocolFailure (section 5.2.3); a READY record raises UnexpectedReset
   (section 4.3).
+For the conformance tests, lower-level calls drive the link the way a
+conforming host never does: send_raw() sends bytes as they are, send_at_baud()
+sends them at another baud rate to cause a UART framing error (as
+uart_rx_check.py T3), and read_records() returns every record received until
+the link stays silent, ERROR records included. take_id() and read_response()
+are the two halves of transaction(), for a raw request with a valid ID.
 Every line sent and received is logged at INFO on the hil.serial logger, as
 text, or as escaped bytes when it holds a byte outside 0x20-0x7E; pytest
 --log-cli-level=INFO shows them live in the terminal.
 
-Version: 1.1
+Version: 1.2
 Date: 26/10/2026
 Author: Z. BEN-AKKA
 History:
   1.0  26/10/2026  Initial version.
   1.1  26/10/2026  Log TX and RX lines at INFO, non-printable bytes escaped.
+  1.2  26/10/2026  Add raw bytes, other baud rates and reading records until silence.
 """
 
 import logging
@@ -160,9 +167,30 @@ class SerialAdapter:
         self._port.reset_input_buffer()
         self._pending = b""
 
-    def send_line(self, line: str) -> None:
-        log.info("TX  %s", line)
-        self._port.write(line.encode("ascii") + b"\r\n")
+    def send_line(self, line: str, eol: bytes = b"\r\n") -> None:
+        data = line.encode("ascii") + eol
+        log.info("TX  %s", line if eol == b"\r\n" else repr(data))
+        self._write(data)
+
+    def send_raw(self, data: bytes) -> None:
+        """Send bytes as they are, terminator included: lines a conforming host never sends."""
+        log.info("TX  %r", data)
+        self._write(data)
+
+    def send_at_baud(self, data: bytes, baudrate: int, settle: float) -> None:
+        """Send data at another baud rate, then restore the link's and drop input (uart_rx_check.py T3)."""
+        normal = self._port.baudrate
+        time.sleep(settle)  # Let the bridge send what is queued at the normal rate
+        log.info("TX  %r at %d baud", data, baudrate)
+        self._port.baudrate = baudrate
+        self._write(data)
+        time.sleep(settle)  # flush() returns once the USB bridge holds the data, not once it is on the wire
+        self._port.baudrate = normal
+        time.sleep(settle)  # Let the bridge apply the restored baud rate
+        self.flush_input()  # Drop switch glitches; the firmware reports errors at the next terminator
+
+    def _write(self, data: bytes) -> None:
+        self._port.write(data)
         self._port.flush()
 
     def read_line(self, deadline: float) -> str | None:
@@ -196,14 +224,30 @@ class SerialAdapter:
             except RecordError as error:
                 raise ProtocolFailure(f"invalid record {line!r}: {error}") from None
 
-    def transaction(self, command: str, args: dict | None = None, timeout: float | None = None) -> Response:
-        """Send one request and return its response (sections 5.1 and 5.2)."""
+    def read_records(self, quiet: float) -> list:
+        """Every record received until no line arrives for quiet seconds; ERROR and READY included."""
+        records = []
+        while (record := self.read_record(time.monotonic() + quiet)) is not None:
+            records.append(record)
+        return records
+
+    def take_id(self) -> int:
+        """ID of the next request, marked as used (section 5.1)."""
         if self.next_id > ID_MAX:
             raise SessionExhausted("ID 65535 already used in this session")
         request_id = self.next_id
         self.next_id += 1
-        self.send_line(format_request(request_id, command, args or {}))
+        return request_id
 
+    def transaction(self, command: str, args: dict | None = None, timeout: float | None = None,
+                    eol: bytes = b"\r\n") -> Response:
+        """Send one request and return its response (sections 5.1 and 5.2); eol=b"\\n" sends LF alone."""
+        request_id = self.take_id()
+        self.send_line(format_request(request_id, command, args or {}), eol)
+        return self.read_response(request_id, command, timeout)
+
+    def read_response(self, request_id: int, command: str, timeout: float | None = None) -> Response:
+        """Wait for RESULT then END of request_id (section 5.2.3); command only names it in failures."""
         limit = self.response_timeout if timeout is None else timeout
         deadline = time.monotonic() + limit
         result = None
