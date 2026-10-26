@@ -5,8 +5,8 @@
 # \brief      Build, flash and document project images for a board.
 #
 # \author     Z. BEN-AKKA
-# \version    1.9
-# \date       23/10/2026
+# \version    1.10
+# \date       26/10/2026
 #
 # \details
 #   Says what to build: the applications, their sources, modules and
@@ -39,6 +39,7 @@
 # | 1.7     | 22/10/2026 | Z. BEN-AKKA | Add the uart-diag image for the UART RX checks.             |
 # | 1.8     | 22/10/2026 | Z. BEN-AKKA | Generate the hil-bench build ID from the git revision.      |
 # | 1.9     | 23/10/2026 | Z. BEN-AKKA | Link the protocol modules into the hil-bench image.         |
+# | 1.10    | 26/10/2026 | Z. BEN-AKKA | Add the reset-sw target (software reset).                   |
 # ****************************
 # */
 
@@ -272,6 +273,10 @@ list:
 reset:
 	$(call board_reset)
 
+.PHONY: reset-sw
+reset-sw:
+	$(call board_reset_sw)
+
 ####################################################################
 # Repository
 ####################################################################
@@ -309,6 +314,7 @@ help:
 	@echo "  clean                remove work/build/$(BOARD)"
 	@echo "  list                 list applications"
 	@echo "  reset                reset the board"
+	@echo "  reset-sw             reset the board by software (SYSRESETREQ)"
 	@echo "  09-securebootloader-tamper   flash a modified application the bootloader must refuse"
 	@echo "  documentation        HTML documentation in work/doc/html (doxygen)"
 	@echo "  format               format the sources (dev/scripts/format_cxx.sh)"
