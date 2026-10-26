@@ -2,15 +2,17 @@
 
 The recipes stay in the Makefile and the board's board.mk: this module only
 runs make <firmware>-flash and make <reset>. A failing or hanging make call
-raises ProgrammingFailure (protocol.md section 7.3). The make output is
-logged on the hil.programmer logger. build_id() reads the hil_build.h of the
-image, the build the readiness banner reports.
+raises ProgrammingFailure (protocol.md section 7.3). On the hil.programmer
+logger, each make command is logged at INFO (shown live with pytest
+--log-cli-level=INFO) and its output at DEBUG (log file only). build_id()
+reads the hil_build.h of the image, the build the readiness banner reports.
 
-Version: 1.0
+Version: 1.1
 Date: 26/10/2026
 Author: Z. BEN-AKKA
 History:
   1.0  26/10/2026  Initial version.
+  1.1  26/10/2026  Log each make command at INFO for live display.
 """
 
 import logging
@@ -53,6 +55,7 @@ class Programmer:
 
     def _make(self, target: str) -> None:
         command = ["make", "--no-print-directory", "-C", str(self.repo_root), target]
+        log.info("RUN make %s", target)
         log.debug("RUN %s", " ".join(command))
         try:
             done = subprocess.run(command, capture_output=True, text=True, timeout=self.timeout, check=False)
