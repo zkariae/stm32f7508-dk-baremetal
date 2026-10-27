@@ -1,4 +1,4 @@
-"""pytest plugin: bench configuration, log file and the board session fixture.
+"""pytest plugin: bench configuration, log file and the board fixtures.
 
 Loaded by tests/host/hil/conftest.py. Options:
   --bench-config FILE  bench configuration (default: tests/host/config/bench.yaml)
@@ -8,12 +8,17 @@ The pytest log file goes to <results_dir>/pytest.log unless --log-file is
 given. The board fixture is shared by the whole session: it flashes the
 image, opens the port, waits for the readiness banner, then checks HELLO and
 CAPS, so every test starts from an identified board (protocol.md section 3.4).
+The fresh_board fixture gives each test that same board with a live session:
+a HELLO before the test, and the recovery of section 8.3 if it fails, since
+a previous test may have reset the board or left a line half sent. quiet is
+the silence after which no more record is expected (read_records()).
 
-Version: 1.0
+Version: 1.1
 Date: 26/10/2026
 Author: Z. BEN-AKKA
 History:
   1.0  26/10/2026  Initial version.
+  1.1  26/10/2026  Add fresh_board and quiet; require the reset-sw target and RX check delays.
 """
 
 import logging
@@ -24,6 +29,7 @@ import pytest
 import yaml
 
 from adapters.board import Board
+from adapters.outcomes import HilOutcome
 from adapters.programmer import Programmer
 from adapters.serial_adapter import SerialAdapter
 
@@ -55,8 +61,8 @@ def load_bench_config(path: Path) -> dict:
         for section, keys in {
             "serial": ("port", "baudrate", "bytesize", "parity", "stopbits", "flow_control"),
             "timeouts": ("startup", "response", "make"),
-            "delays": ("port_open_settle",),
-            "hardware": ("board", "firmware_target", "reset_target"),
+            "delays": ("port_open_settle", "baud_switch_settle", "extra_byte_wait"),
+            "hardware": ("board", "firmware_target", "reset_target", "reset_sw_target"),
             "firmware": ("expected_build", "accept_build_mismatch"),
         }.items():
             missing = [key for key in keys if key not in config.get(section, {})]
@@ -102,7 +108,7 @@ def board(pytestconfig, bench_config) -> Board:
     settle = bench_config["delays"]["port_open_settle"]
 
     programmer = Programmer(REPO_ROOT, hardware["board"], hardware["firmware_target"], hardware["reset_target"],
-                            timeouts["make"])
+                            timeouts["make"], hardware["reset_sw_target"])
     if not pytestconfig.getoption("no_flash"):
         programmer.flash()
 
@@ -115,3 +121,24 @@ def board(pytestconfig, bench_config) -> Board:
         hil_board.identify()
         hil_board.capabilities()
         yield hil_board
+
+
+@pytest.fixture
+def fresh_board(board) -> Board:
+    """The session board with a live session before the test, and no input left after it."""
+    alive = False
+    if board.banner is not None:
+        try:
+            alive = board.request("HELLO").ok  # Reads what is pending: a READY is UNEXPECTED_RESET
+        except HilOutcome as error:
+            log.warning("session lost after the previous test: %s", error)
+    if not alive:
+        board.recover()
+    yield board
+    board.adapter.flush_input()
+
+
+@pytest.fixture(scope="session")
+def quiet(bench_config) -> float:
+    """Seconds without a received line after which no more record is expected."""
+    return bench_config["delays"]["extra_byte_wait"]
