@@ -2,118 +2,188 @@
 <!--
 ****************************
 \file       tests/host/hil/run_tests.md
-\brief      Commands to run the UART RX HIL tests.
+\brief      Commands to run the HIL protocol tests with pytest.
 
 \author     Z. BEN-AKKA
-\version    1.5
-\date       22/10/2026
+\version    1.2
+\date       26/10/2026
 
 \details
-  Lists the commands to run the UART RX tests T1 to T8, all together or one
-  at a time, and the options that override the default files and settings.
-  Test definitions are in plans/uart_rx.yaml; bench settings are in
-  config/bench.yaml.
+  Lists the commands to run the pytest protocol tests of the hil-bench
+  firmware, the options of the HIL bench plugin, the bench prerequisites, the
+  outcomes of tests/protocol.md section 7.3 and how to send requests by hand
+  from a serial terminal. Bench settings are in
+  tests/host/config/bench.yaml, shared with the rx_check/ UART tests.
 
-\section run_tests_md_version_history Version history
-| Version | Date       | Author      | Description                                    |
-|:-------:|:----------:|:------------|:-----------------------------------------------|
-| 1.0     | 19/10/2026 | Z. BEN-AKKA | Initial version.                               |
-| 1.1     | 21/10/2026 | Z. BEN-AKKA | Add T5 hardware overrun run.                   |
-| 1.2     | 21/10/2026 | Z. BEN-AKKA | Add T6 RX buffer overflow run.                 |
-| 1.3     | 21/10/2026 | Z. BEN-AKKA | Add T7 run with its prerequisites; port first. |
-| 1.4     | 22/10/2026 | Z. BEN-AKKA | Add T8 RX flush run.                           |
-| 1.5     | 22/10/2026 | Z. BEN-AKKA | Use the renamed uart_rx_check.py script.       |
+\section hil_run_tests_md_version_history Version history
+| Version | Date       | Author      | Description      |
+|:-------:|:----------:|:------------|:-----------------|
+| 1.0     | 26/10/2026 | Z. BEN-AKKA | Initial version. |
+| 1.1     | 26/10/2026 | Z. BEN-AKKA | Add the live display of make, TX and RX lines. |
+| 1.2     | 26/10/2026 | Z. BEN-AKKA | Add manual requests from a serial terminal (miniterm). |
 ****************************
 -->
 
-# Running the UART RX HIL tests
+# Running the HIL protocol tests
 
 All commands run from the repository root.
 
 ## Prerequisites
 
 ```bash
-python3 -m pip install pyserial pyyaml   # host dependencies
-make hil-bench-flash                     # flash the raw-echo bench firmware
+python3 -m pip install pyserial pyyaml pytest   # host dependencies (tests/host/hil/pyproject.toml)
 ```
+
+- OpenOCD runs without sudo: the udev rule shipped with OpenOCD
+  (`60-openocd.rules`) gives the ST-LINK to the `plugdev` group, and the user
+  must be in `plugdev` (`id -nG`). The serial port must be readable by the
+  user too (`ls -l /dev/ttyACM0`).
+- The serial port is `serial.port` in `tests/host/config/bench.yaml`.
 
 ## Run all tests
 
 ```bash
-python3 tests/host/hil/uart_rx_check.py               # T1 to T8, in plan order
+python3 -m pytest tests/host/hil
 ```
 
-T7 prints `CHECK T7: LD1 keeps blinking at 2 Hz (visual)`: check LD1 on the board.
+The session flashes the hil-bench image (`make hil-bench-flash`), resets the
+board (`make reset`), waits for the readiness banner, then checks HELLO and
+CAPS before the first test.
 
-## Run one test
+## Common runs
 
 ```bash
-python3 tests/host/hil/uart_rx_check.py --only T1     # Nominal reception
-python3 tests/host/hil/uart_rx_check.py --only T2     # Burst reception
-python3 tests/host/hil/uart_rx_check.py --only T3     # Framing error
-python3 tests/host/hil/uart_rx_check.py --only T4     # Wrong baud rate
-python3 tests/host/hil/uart_rx_check.py --only T5     # Hardware overrun
-python3 tests/host/hil/uart_rx_check.py --only T6     # RX buffer overflow
-python3 tests/host/hil/uart_rx_check.py --only T3 T4 T5 T6 T7   # No interrupt storm
-python3 tests/host/hil/uart_rx_check.py --only T8     # RX flush
+python3 -m pytest tests/host/hil -v                         # one line per test
+python3 -m pytest tests/host/hil --log-cli-level=INFO       # show make commands, TX and RX lines
+python3 -m pytest tests/host/hil --no-flash                 # test the image already on the board
+python3 -m pytest tests/host/hil -m smoke                   # banner, HELLO and CAPS only
+python3 -m pytest tests/host/hil --port /dev/ttyACM1        # another serial port
+python3 -m pytest tests/host/hil --junitxml=work/hil-results/junit.xml   # JUnit report
 ```
 
-T7 must run after T3 to T6 in the same run: `--only T7` alone is refused
-(exit code 2).
+## Live display
 
-## Run a selection
+`--log-cli-level=INFO` prints, under each test, the make commands run on the
+board, every line sent to the firmware (`TX`) and every line received from it
+(`RX`), decoded as text. A line that holds a byte outside 0x20-0x7E is shown
+as escaped bytes, for example `TX  b'CMD id=20 command=HE\x7fLLO'`. The
+OpenOCD output is not shown; it stays in `work/hil-results/pytest.log`
+(`--log-cli-level=DEBUG` shows it too).
+
+```text
+10:42:01 RUN make reset
+10:42:02 RX  READY name=hil-bench fw=1.0.0 proto=1.0 build=3a03de9 reset=PIN reset_flags=0x04000000
+10:42:02 session started: READY name=hil-bench fw=1.0.0 proto=1.0 build=3a03de9 reset=PIN reset_flags=0x04000000
+10:42:02 TX  CMD id=1 command=HELLO
+10:42:02 RX  RESULT id=1 status=OK name=hil-bench proto=1.0 fw=1.0.0 build=3a03de9
+10:42:02 RX  END id=1
+```
+
+## Manual requests
+
+Requests can also be typed by hand in a serial terminal, with the hil-bench
+image on the board:
 
 ```bash
-python3 tests/host/hil/uart_rx_check.py --only T3 T4  # runs in plan order
-python3 tests/host/hil/uart_rx_check.py /dev/ttyACM1 --only T3 T4   # port before --only
+python3 -m serial.tools.miniterm /dev/ttyACM0 115200 --eol CRLF --echo
 ```
 
-`--only` takes every following word as a test ID, so put the port before it.
+`--eol CRLF` makes Enter send CR LF, `--echo` shows what is typed; Ctrl-]
+quits. Run `make reset` in another terminal to see the readiness banner.
 
-## Repeat a run
-
-```bash
-for i in $(seq 10); do python3 tests/host/hil/uart_rx_check.py; done   # about 20 s per run
+```text
+CMD id=6 command=HELLO
+RESULT id=6 status=OK name=hil-bench proto=1.0 fw=1.0.0 build=bb11287
+END id=6
+CMD id=7 command=CMP start=0
+RESULT id=7 status=ERR code=UNKNOWN_COMMAND
+END id=7
 ```
+
+- Any id from 1 to 65535 is accepted: consecutive IDs are a host rule only.
+- Every line must end with LF: a CR alone is an invalid byte, and the line
+  is answered with `ERROR code=BAD_FRAME`.
+- Backspace sends an invalid byte too: after a typing error, end the line and
+  type it again.
+- Only one program can use the port: quit the terminal before running pytest
+  or `rx_check/uart_rx_check.py`.
+- With minicom (`minicom -D /dev/ttyACM0 -b 115200`), end each line with
+  Ctrl-J (LF) instead of Enter, which sends CR only; turn local echo on with
+  Ctrl-A E and hardware flow control off (Ctrl-A O, Serial port setup).
 
 ## Options
 
 | Option | Default | Purpose |
 |:--|:--|:--|
-| `port` | `serial.port` in `bench.yaml` | Serial port, e.g. `/dev/ttyACM0` or `COM5` |
-| `--only ID ...` | all plan tests | Test IDs to run |
-| `--plan FILE` | `plans/uart_rx.yaml` | Test plan |
-| `--config FILE` | `config/bench.yaml` | Bench configuration |
-| `--baud N` | `serial.baudrate` in `bench.yaml` | Bench baud rate |
-| `--timeout S` | `timeouts.read` in `bench.yaml` | Read timeout in seconds |
+| `--port PORT` | `serial.port` in `bench.yaml` | Serial port |
+| `--no-flash` | flash | Do not flash; with `expected_build: auto`, the last build is still expected |
+| `--bench-config FILE` | `tests/host/config/bench.yaml` | Bench configuration |
+| `--log-file FILE` | `work/hil-results/pytest.log` | Log of every serial line and make output |
+| `--log-cli-level=INFO` | off | Show make commands, TX and RX lines live in the terminal |
 
 ```bash
 # Serial port
-python3 tests/host/hil/uart_rx_check.py /dev/ttyACM1
+python3 -m pytest tests/host/hil --port /dev/ttyACM1
 
-# Test plan
-python3 tests/host/hil/uart_rx_check.py --plan path/to/my_plan.yaml
+# Test the image already on the board, without flashing
+python3 -m pytest tests/host/hil --no-flash
 
 # Bench configuration
-python3 tests/host/hil/uart_rx_check.py --config path/to/my_bench.yaml
+python3 -m pytest tests/host/hil --bench-config path/to/my_bench.yaml
 
-# Bench baud rate (must match the firmware, otherwise the tests fail)
-python3 tests/host/hil/uart_rx_check.py --baud 115200
+# Log file
+python3 -m pytest tests/host/hil --log-file work/hil-results/run1.log
 
-# Read timeout in seconds
-python3 tests/host/hil/uart_rx_check.py --timeout 5
+# Live display of make commands, TX and RX lines
+python3 -m pytest tests/host/hil --no-flash --log-cli-level=INFO
+
+# One test, by name
+python3 -m pytest tests/host/hil -k test_hello_matches_banner
 
 # Options combined
-python3 tests/host/hil/uart_rx_check.py /dev/ttyACM1 --only T4 --timeout 5
+python3 -m pytest tests/host/hil -v --no-flash --port /dev/ttyACM1 --junitxml=work/hil-results/junit.xml
 
-# List all options
-python3 tests/host/hil/uart_rx_check.py --help
+# List the tests without running them (no board needed)
+python3 -m pytest tests/host/hil --collect-only -q
+
+# List all options, the HIL bench ones under "HIL bench"
+python3 -m pytest tests/host/hil --help
 ```
+
+Bench settings used by these tests:
+
+| Key | Default | Purpose |
+|:--|:--|:--|
+| `timeouts.startup` | `5.0` | Readiness banner after the reset (section 8.1) |
+| `timeouts.response` | `2.0` | END of each request (section 8.1) |
+| `timeouts.make` | `120.0` | One make call: flash or reset |
+| `delays.port_open_settle` | `0.1` | After opening the port, and stale input drained before each reset |
+| `hardware.reset_target` | `reset` | make target that resets the board |
+| `firmware.expected_build` | `auto` | Build HELLO must report: `auto` (the flashed image), a value, or `null` to skip |
+| `firmware.accept_build_mismatch` | `false` | `true` turns BUILD_MISMATCH into a logged warning |
+| `results_dir` | `work/hil-results` | Folder of the log file, relative to the repository root |
+
+## Outcomes
+
+A failure message starts with the outcome of `tests/protocol.md` section 7.3:
+
+| Outcome | Typical cause |
+|:--|:--|
+| `PROGRAMMING_FAILURE` | make failed: build error, ST-LINK not found, OpenOCD permission |
+| `STARTUP_FAILURE` | No valid READY within 5 s: wrong image (for example uart-diag), wrong port |
+| `INCOMPATIBLE_PROTOCOL` | The firmware's protocol major version is not 1 |
+| `BUILD_MISMATCH` | HELLO build differs from `firmware.expected_build` |
+| `UNSUPPORTED_COMMAND` | A test needs a command missing from CAPS |
+| `UNEXPECTED_RESET` | A READY record during the session |
+| `PROTOCOL_FAILURE` | Invalid record, wrong ID, ERROR record, or no END in time |
+| `FUNCTIONAL_ERROR` | A command answered status=ERR or unexpected values |
 
 ## Exit codes
 
 | Code | Meaning |
 |:--:|:--|
 | 0 | All selected tests passed |
-| 1 | At least one test failed |
-| 2 | Configuration, plan or serial port error |
+| 1 | At least one test failed, or the board session could not start |
+| 2 | Interrupted |
+| 4 | Usage error, such as an invalid bench configuration |
+| 5 | No test selected |
