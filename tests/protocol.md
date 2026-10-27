@@ -5,12 +5,12 @@
 \brief      HIL firmware-to-host protocol specification.
 
 \author     Z. BEN-AKKA
-\version    1.3
-\date       22/10/2026
+\version    1.4
+\date       27/10/2026
 
 \details
   Specifies the HIL host-firmware serial interface, including record syntax,
-  version compatibility, HELLO/CAPS commands, reset reporting, error handling,
+  version compatibility, HELLO, CAPS and LED commands, reset reporting, error handling,
   transaction timeouts, and session recovery. The document revision is
   independent of the wire protocol and firmware versions.
 
@@ -21,6 +21,7 @@
 | 1.1     | 16/10/2026 | Z. BEN-AKKA | Formalize HIL records, commands, reset reporting, and recovery. |
 | 1.2     | 22/10/2026 | Z. BEN-AKKA | Update §2.4 note: the UART driver now receives. |
 | 1.3     | 22/10/2026 | Z. BEN-AKKA | Add noise and RX overflow to BAD_FRAME; report line errors once at the terminator. |
+| 1.4     | 27/10/2026 | Z. BEN-AKKA | Specify LED_SET and LED_GET; protocol 1.1. |
 ****************************
 -->
 
@@ -39,7 +40,8 @@ the STM32F7508-DK HIL bench firmware. It specifies:
 - timeouts and recovery.
 
 
-The initial command set contains `HELLO` and `CAPS`. Additional commands
+The command set of protocol 1.1 contains `HELLO`, `CAPS`, `LED_SET` and
+`LED_GET`. Additional commands
 SHALL be specified in section 6 before either endpoint implements them.
 
 ### 1.1 Conventions
@@ -144,7 +146,7 @@ This document uses three independent version identifiers:
 | Protocol version | `proto` field of the readiness banner | Identifies the wire protocol implemented by the firmware. |
 | Firmware version | `fw` field of the readiness banner | Identifies the firmware image. |
 
-This revision of the document specifies protocol version **1.0**. A document
+This revision of the document specifies protocol version **1.1**. A document
 revision MAY change without changing the protocol version, for example to
 clarify wording.
 
@@ -507,10 +509,62 @@ RESULT id=3 status=OK total=12 start=4 names=...
 END id=3
 ```
 
-### 6.4 Future commands (informative)
+### 6.4 `LED_SET`
+
+`LED_SET` drives the user LED LD1 of the board (pin PI1, lit when high) and
+reports the level read back on the pin.
+
+| Item | Specification |
+|:--|:--|
+| Arguments | `state` (required): `on`, `off` or `toggle`, in lowercase. |
+| Success result | `state=<on\|off>` |
+| Error codes | `INVALID_ARGUMENT` if `state` is missing or has another value, or if any other argument is present. `DEVICE_ERROR` if the level read back on the pin differs from the requested state. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | LD1 takes the requested state, or the opposite of its current state for `toggle`, and keeps it until the next `LED_SET` or a reset. |
+
+Result fields:
+
+| Field | Value |
+|:--|:--|
+| `state` | State of LD1 after the command, from the pin level in the GPIO input data register: `on` if lit, `off` otherwise. |
+
+Firmware requirements:
+
+- After any reset, the firmware SHALL turn LD1 off before sending the
+  readiness banner.
+
+Example (informative):
+
+```text
+CMD id=3 command=LED_SET state=on
+RESULT id=3 status=OK state=on
+END id=3
+```
+
+### 6.5 `LED_GET`
+
+`LED_GET` reports the state of LD1 without changing it.
+
+| Item | Specification |
+|:--|:--|
+| Arguments | None. |
+| Success result | `state=<on\|off>`, as defined for `LED_SET` (section 6.4). |
+| Error codes | `INVALID_ARGUMENT` if any argument is present. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | None. |
+
+Example (informative):
+
+```text
+CMD id=4 command=LED_GET
+RESULT id=4 status=OK state=on
+END id=4
+```
+
+### 6.6 Future commands (informative)
 
 The following example shows how a future peripheral command would use the
-same envelope. `QSPI_READ_ID` is not part of protocol version 1.0 and SHALL
+same envelope. `QSPI_READ_ID` is not part of protocol version 1.1 and SHALL
 NOT be implemented until it is specified according to section 6.1.
 
 ```text
@@ -662,7 +716,7 @@ a reference is dated, only the cited edition applies.
 | [N1] | IETF, *Key words for use in RFCs to Indicate Requirement Levels*, RFC 2119 (BCP 14), March 1997. <https://www.rfc-editor.org/rfc/rfc2119> | Meaning of SHALL, SHOULD, MAY (section 1.1). |
 | [N2] | IETF, *Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words*, RFC 8174 (BCP 14), May 2017. <https://www.rfc-editor.org/rfc/rfc8174> | Key words apply only in uppercase (section 1.1). |
 | [N3] | ANSI, *Coded Character Set – 7-Bit American Standard Code for Information Interchange*, ANSI X3.4-1986 (equivalent: ISO/IEC 646, International Reference Version). | Character set and byte values of records (section 2.2). |
-| [N4] | STMicroelectronics, *RM0385 Reference manual – STM32F75xxx and STM32F74xxx advanced Arm®-based 32-bit MCUs*, Rev. <x>. <https://www.st.com/resource/en/reference_manual/rm0385-stm32f75xxx-and-stm32f74xxx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf> | USART framing and error flags (FE, ORE) (section 2.4); reset flags of `RCC_CSR` and clearing with `RMVF` (banner `reset` field). |
+| [N4] | STMicroelectronics, *RM0385 Reference manual – STM32F75xxx and STM32F74xxx advanced Arm®-based 32-bit MCUs*, Rev. <x>. <https://www.st.com/resource/en/reference_manual/rm0385-stm32f75xxx-and-stm32f74xxx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf> | USART framing and error flags (FE, ORE) (section 2.4); reset flags of `RCC_CSR` and clearing with `RMVF` (banner `reset` field); GPIO input data register (sections 6.4 and 6.5). |
 
 ### 9.2 Informative references
 
@@ -674,10 +728,10 @@ required to implement this specification.
 | [I1] | IETF, *Augmented BNF for Syntax Specifications: ABNF*, RFC 5234 (STD 68), January 2008. <https://www.rfc-editor.org/rfc/rfc5234> | Recommended notation for a formal grammar of records. |
 | [I2] | T. Preston-Werner, *Semantic Versioning 2.0.0*. <https://semver.org/spec/v2.0.0.html> | Model for the `major.minor` protocol version (section 3) and the `fw` version. |
 | [I3] | USB Implementers Forum, *Class Definitions for Communication Devices*, Revision 1.2, and *PSTN Devices* subclass, Revision 1.2. <https://www.usb.org/document-library/class-definitions-communication-devices-12> | USB CDC-ACM class used by the ST-LINK virtual COM port. |
-| [I4] | JEDEC, *JEP106 – Standard Manufacturer's Identification Code*, latest revision. <https://www.jedec.org/standards-documents/docs/jep-106ab> | Manufacturer byte of the JEDEC identifier (section 6.4 example). |
+| [I4] | JEDEC, *JEP106 – Standard Manufacturer's Identification Code*, latest revision. <https://www.jedec.org/standards-documents/docs/jep-106ab> | Manufacturer byte of the JEDEC identifier (section 6.6 example). |
 | [I5] | JEDEC, *JESD216 – Serial Flash Discoverable Parameters (SFDP)*, latest revision. <https://www.jedec.org/standards-documents/docs/jesd216b> | Identification of serial flash devices for future QSPI commands. |
 | [I6] | ISO/IEC/IEEE 29119-3, *Software and systems engineering – Software testing – Part 3: Test documentation*. | Structure of test reports (section 8.4). |
-| [I7] | STMicroelectronics, *STM32F7508-DK* product page and user manual. <https://www.st.com/en/evaluation-tools/stm32f7508-dk.html> | Board wiring of USART1 to the ST-LINK virtual COM port. |
+| [I7] | STMicroelectronics, *STM32F7508-DK* product page and user manual. <https://www.st.com/en/evaluation-tools/stm32f7508-dk.html> | Board wiring of USART1 to the ST-LINK virtual COM port, and of the user LED LD1 to PI1 (sections 6.4 and 6.5). |
 
 ### 9.3 Related open-source projects (informative)
 

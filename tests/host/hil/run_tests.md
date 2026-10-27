@@ -5,8 +5,8 @@
 \brief      Commands to run the HIL protocol tests with pytest.
 
 \author     Z. BEN-AKKA
-\version    1.2
-\date       26/10/2026
+\version    1.3
+\date       27/10/2026
 
 \details
   Lists the commands to run the pytest protocol tests of the hil-bench
@@ -21,6 +21,7 @@
 | 1.0     | 26/10/2026 | Z. BEN-AKKA | Initial version. |
 | 1.1     | 26/10/2026 | Z. BEN-AKKA | Add the live display of make, TX and RX lines. |
 | 1.2     | 26/10/2026 | Z. BEN-AKKA | Add manual requests from a serial terminal (miniterm). |
+| 1.3     | 27/10/2026 | Z. BEN-AKKA | Add the marker runs and the LED requests; protocol 1.1 examples. |
 ****************************
 -->
 
@@ -57,6 +58,9 @@ python3 -m pytest tests/host/hil -v                         # one line per test
 python3 -m pytest tests/host/hil --log-cli-level=INFO       # show make commands, TX and RX lines
 python3 -m pytest tests/host/hil --no-flash                 # test the image already on the board
 python3 -m pytest tests/host/hil -m smoke                   # banner, HELLO and CAPS only
+python3 -m pytest tests/host/hil -m protocol                # protocol.md conformance cases
+python3 -m pytest tests/host/hil -m led                     # LED_SET and LED_GET
+python3 -m pytest tests/host/hil -m unit                    # adapters against a fake firmware, no board
 python3 -m pytest tests/host/hil --port /dev/ttyACM1        # another serial port
 python3 -m pytest tests/host/hil --junitxml=work/hil-results/junit.xml   # JUnit report
 ```
@@ -72,10 +76,10 @@ OpenOCD output is not shown; it stays in `work/hil-results/pytest.log`
 
 ```text
 10:42:01 RUN make reset
-10:42:02 RX  READY name=hil-bench fw=1.0.0 proto=1.0 build=3a03de9 reset=PIN reset_flags=0x04000000
-10:42:02 session started: READY name=hil-bench fw=1.0.0 proto=1.0 build=3a03de9 reset=PIN reset_flags=0x04000000
+10:42:02 RX  READY name=hil-bench fw=1.1.0 proto=1.1 build=3a03de9 reset=PIN reset_flags=0x04000000
+10:42:02 session started: READY name=hil-bench fw=1.1.0 proto=1.1 build=3a03de9 reset=PIN reset_flags=0x04000000
 10:42:02 TX  CMD id=1 command=HELLO
-10:42:02 RX  RESULT id=1 status=OK name=hil-bench proto=1.0 fw=1.0.0 build=3a03de9
+10:42:02 RX  RESULT id=1 status=OK name=hil-bench proto=1.1 fw=1.1.0 build=3a03de9
 10:42:02 RX  END id=1
 ```
 
@@ -93,18 +97,27 @@ quits. Run `make reset` in another terminal to see the readiness banner.
 
 ```text
 CMD id=6 command=HELLO
-RESULT id=6 status=OK name=hil-bench proto=1.0 fw=1.0.0 build=bb11287
+RESULT id=6 status=OK name=hil-bench proto=1.1 fw=1.1.0 build=bb11287
 END id=6
 CMD id=7 command=CMP start=0
 RESULT id=7 status=ERR code=UNKNOWN_COMMAND
 END id=7
+CMD id=8 command=LED_SET state=on
+RESULT id=8 status=OK state=on
+END id=8
+CMD id=9 command=LED_GET
+RESULT id=9 status=OK state=on
+END id=9
+CMD id=10 command=LED_SET state=blink
+RESULT id=10 status=ERR code=INVALID_ARGUMENT
+END id=10
 ```
 
 - Any id from 1 to 65535 is accepted: consecutive IDs are a host rule only.
 - Every line must end with LF: a CR alone is an invalid byte, and the line
   is answered with `ERROR code=BAD_FRAME`.
-- Backspace sends an invalid byte too: after a typing error, end the line and
-  type it again.
+- Backspace and the arrow keys send invalid bytes too (0x7F, ESC): after a
+  typing error, end the line and type it again.
 - Only one program can use the port: quit the terminal before running pytest
   or `rx_check/uart_rx_check.py`.
 - With minicom (`minicom -D /dev/ttyACM0 -b 115200`), end each line with

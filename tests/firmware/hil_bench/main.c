@@ -5,13 +5,14 @@
 \brief      Entry point of the HIL protocol firmware.
 
 \author     Z. BEN-AKKA
-\version    1.1
-\date       23/10/2026
+\version    1.2
+\date       27/10/2026
 
 \details
   Firmware of the hil-bench image, which implements tests/protocol.md.
   At boot it saves the reset cause first (section 4.2), starts USART1 at
-  115200 baud and sends one READY banner (section 4.1). Bytes received
+  115200 baud, turns LD1 off (section 6.4) and sends one READY banner
+  (section 4.1). Bytes received
   before the end of the banner are discarded. The main loop then reads the
   UART receive events, assembles lines (line.c) and answers each request
   (dispatch.c). Only protocol records are sent on the link (section 2.3).
@@ -23,6 +24,7 @@
 |:-------:|:----------:|:------------|:---------------------------------------------|
 | 1.0     | 22/10/2026 | Z. BEN-AKKA | Initial version: silent protocol entry point. |
 | 1.1     | 23/10/2026 | Z. BEN-AKKA | Send the READY banner and serve protocol requests. |
+| 1.2     | 27/10/2026 | Z. BEN-AKKA | Turn LD1 off before the readiness banner. |
 ****************************
 */
 
@@ -58,6 +60,9 @@ int main(void)
 
   UartInit(&BOARD_UART_VCP, HSI_HZ, HIL_UART_BAUDRATE); // No clock setup: the core runs from HSI at reset.
   UartRxStart(&BOARD_UART_VCP);
+
+  LedInit(&BOARD_LED_LD1); // Port clock and PI1 output: LED_SET and LED_GET use them
+  LedOff(&BOARD_LED_LD1);  // LD1 off after any reset, before the banner (section 6.4)
 
   SendBanner();
   UartFlush(&BOARD_UART_VCP);
