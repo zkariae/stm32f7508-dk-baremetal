@@ -5,8 +5,8 @@
 \brief      QUADSPI driver for a single serial NOR flash.
 
 \author     Z. BEN-AKKA
-\version    1.3
-\date       11/10/2026
+\version    1.4
+\date       27/10/2026
 
 \details
   API documented in qspi.h.
@@ -18,6 +18,7 @@
 | 1.1     | 10/10/2026 | Z. BEN-AKKA | Generic: flash size and commands are params. |
 | 1.2     | 11/10/2026 | Z. BEN-AKKA | Pins configured by the applications.         |
 | 1.3     | 11/10/2026 | Z. BEN-AKKA | Registers from the board's mcu.h.            |
+| 1.4     | 27/10/2026 | Z. BEN-AKKA | Bound the TCF, FTF and ABORT waits.          |
 ****************************
 */
 
@@ -34,7 +35,7 @@
 #define CMD_RESET_MEMORY 0x99
 #define CMD_READ_ID      0x9F
 
-#define QSPI_BUSY_TIMEOUT 1000000U ///< Polls of BUSY before giving up.
+#define QSPI_BUSY_TIMEOUT 1000000U ///< Polls of a status flag before giving up.
 
 /*!
 \brief  Wait for the QUADSPI to be idle.
@@ -43,6 +44,36 @@
 static int qspi_wait_idle(void)
 {
   for (uint32_t n = 0; QSPI_SR & QSPI_SR_BUSY; n++) {
+    if (n > QSPI_BUSY_TIMEOUT) {
+      return TIMEOUT;
+    }
+  }
+  return SUCCESS;
+}
+
+/*!
+\brief  Wait for a QSPI_SR flag to be set.
+\param  mask  Flag to wait for, such as QSPI_SR_TCF.
+\return SUCCESS, or TIMEOUT.
+*/
+static int qspi_wait_flag(uint32_t mask)
+{
+  for (uint32_t n = 0; !(QSPI_SR & mask); n++) {
+    if (n > QSPI_BUSY_TIMEOUT) {
+      return TIMEOUT;
+    }
+  }
+  return SUCCESS;
+}
+
+/*!
+\brief  Abort the current transfer and wait for the QUADSPI to return to idle.
+\return SUCCESS, or TIMEOUT.
+*/
+static int qspi_abort(void)
+{
+  QSPI_CR |= QSPI_CR_ABORT;
+  for (uint32_t n = 0; QSPI_CR & QSPI_CR_ABORT; n++) {
     if (n > QSPI_BUSY_TIMEOUT) {
       return TIMEOUT;
     }
@@ -65,7 +96,10 @@ int QspiCommand(uint8_t cmd)
     return TIMEOUT;
   }
   QSPI_CCR = QSPI_CCR_FMODE_WRITE | QSPI_CCR_IMODE(1) | cmd; // starts on the CCR write
-  while (!(QSPI_SR & QSPI_SR_TCF)) {}
+  if (qspi_wait_flag(QSPI_SR_TCF) != SUCCESS) {
+    qspi_abort();
+    return TIMEOUT;
+  }
   QSPI_FCR = QSPI_FCR_CTCF;
   return SUCCESS;
 }
@@ -85,19 +119,27 @@ int QspiReadJedecId(uint32_t *id)
     return TIMEOUT;
   }
 
-  *id = 0;
+  uint32_t value = 0;
   QSPI_DLR = 3 - 1; // length - 1
   QSPI_CCR = QSPI_CCR_FMODE_READ | QSPI_CCR_DMODE(1) | QSPI_CCR_IMODE(1) | CMD_READ_ID;
   for (int i = 0; i < 3; i++) {
-    while (!(QSPI_SR & QSPI_SR_FTF)) {}
-    *id |= (uint32_t)QSPI_DR8 << (8 * i);
+    if (qspi_wait_flag(QSPI_SR_FTF) != SUCCESS) {
+      qspi_abort();
+      return TIMEOUT;
+    }
+    value |= (uint32_t)QSPI_DR8 << (8 * i);
   }
-  while (!(QSPI_SR & QSPI_SR_TCF)) {}
+  if (qspi_wait_flag(QSPI_SR_TCF) != SUCCESS) {
+    qspi_abort();
+    return TIMEOUT;
+  }
   QSPI_FCR = QSPI_FCR_CTCF;
 
   // ES0290 errata: an indirect read may leave BUSY set; abort returns to idle
-  QSPI_CR |= QSPI_CR_ABORT;
-  while (QSPI_CR & QSPI_CR_ABORT) {}
+  if (qspi_abort() != SUCCESS) {
+    return TIMEOUT;
+  }
+  *id = value;
   return SUCCESS;
 }
 
