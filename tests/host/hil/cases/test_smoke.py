@@ -3,15 +3,19 @@
 The board fixture has already received the banner and checked HELLO and
 CAPS against protocol.md sections 4.1, 6.2 and 6.3; these tests state the
 expected values explicitly and run each command once more in the session.
+The command list CAPS must return comes from cases/expected.py.
 
-Version: 1.0
-Date: 26/10/2026
+Version: 1.1
+Date: 27/10/2026
 Author: Z. BEN-AKKA
 History:
   1.0  26/10/2026  Initial version.
+  1.1  27/10/2026  Compare the CAPS list with cases/expected.py.
 """
 
 import pytest
+
+from cases.expected import COMMANDS
 
 pytestmark = pytest.mark.smoke
 
@@ -30,9 +34,9 @@ def test_hello_matches_banner(board):
         assert response.fields[key] == getattr(board.banner, key)
 
 
-def test_caps_lists_hello_and_caps(board):
+def test_caps_lists_expected_commands(board):
     names = board.capabilities()
-    assert names[:2] == ["HELLO", "CAPS"]
+    assert names == COMMANDS
     assert len(names) == len(set(names))
 
 
