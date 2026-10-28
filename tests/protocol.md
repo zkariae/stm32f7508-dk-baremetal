@@ -5,7 +5,7 @@
 \brief      HIL firmware-to-host protocol specification.
 
 \author     Z. BEN-AKKA
-\version    1.6
+\version    1.7
 \date       28/10/2026
 
 \details
@@ -24,6 +24,7 @@
 | 1.4     | 27/10/2026 | Z. BEN-AKKA | Specify LED_SET and LED_GET; protocol 1.1. |
 | 1.5     | 28/10/2026 | Z. BEN-AKKA | Specify QSPI_ID, QSPI_READ, QSPI_ERASE and QSPI_WRITE; protocol 1.2. |
 | 1.6     | 28/10/2026 | Z. BEN-AKKA | Limit QSPI data to 32 bytes: lines are 128 bytes at most. |
+| 1.7     | 28/10/2026 | Z. BEN-AKKA | QSPI_ID result field jedec_id: id is a reserved key. |
 ****************************
 -->
 
@@ -587,7 +588,7 @@ the test area at the start of a session.
 | Item | Specification |
 |:--|:--|
 | Arguments | None. |
-| Success result | `id=0x<8 hexadecimal digits>` |
+| Success result | `jedec_id=0x<8 hexadecimal digits>` |
 | Error codes | `INVALID_ARGUMENT` if any argument is present. `DEVICE_TIMEOUT` if the flash does not answer. `BAD_REQUEST` as defined in section 5.2.1. |
 | Timeout | 2 s. |
 | Side effects | None. |
@@ -596,13 +597,13 @@ Result fields:
 
 | Field | Value |
 |:--|:--|
-| `id` | The three identifier bytes, the first byte received in bits 7:0: manufacturer [I4], memory type, then capacity. For the N25Q128A: `0x0018BA20`. |
+| `jedec_id` | The three identifier bytes, the first byte received in bits 7:0: manufacturer [I4], memory type, then capacity. For the N25Q128A: `0x0018BA20`. |
 
 Example (informative):
 
 ```text
 CMD id=5 command=QSPI_ID
-RESULT id=5 status=OK id=0x0018BA20
+RESULT id=5 status=OK jedec_id=0x0018BA20
 END id=5
 ```
 
