@@ -5,12 +5,12 @@
 \brief      HIL firmware-to-host protocol specification.
 
 \author     Z. BEN-AKKA
-\version    1.4
-\date       27/10/2026
+\version    1.8
+\date       28/10/2026
 
 \details
   Specifies the HIL host-firmware serial interface, including record syntax,
-  version compatibility, HELLO, CAPS and LED commands, reset reporting, error handling,
+  version compatibility, HELLO, CAPS, LED and QSPI commands, reset reporting, error handling,
   transaction timeouts, and session recovery. The document revision is
   independent of the wire protocol and firmware versions.
 
@@ -22,6 +22,10 @@
 | 1.2     | 22/10/2026 | Z. BEN-AKKA | Update §2.4 note: the UART driver now receives. |
 | 1.3     | 22/10/2026 | Z. BEN-AKKA | Add noise and RX overflow to BAD_FRAME; report line errors once at the terminator. |
 | 1.4     | 27/10/2026 | Z. BEN-AKKA | Specify LED_SET and LED_GET; protocol 1.1. |
+| 1.5     | 28/10/2026 | Z. BEN-AKKA | Specify QSPI_ID, QSPI_READ, QSPI_ERASE and QSPI_WRITE; protocol 1.2. |
+| 1.6     | 28/10/2026 | Z. BEN-AKKA | Limit QSPI data to 32 bytes: lines are 128 bytes at most. |
+| 1.7     | 28/10/2026 | Z. BEN-AKKA | QSPI_ID result field jedec_id: id is a reserved key. |
+| 1.8     | 28/10/2026 | Z. BEN-AKKA | QSPI: page rule and test area layout (section 6.6). |
 ****************************
 -->
 
@@ -40,8 +44,8 @@ the STM32F7508-DK HIL bench firmware. It specifies:
 - timeouts and recovery.
 
 
-The command set of protocol 1.1 contains `HELLO`, `CAPS`, `LED_SET` and
-`LED_GET`. Additional commands
+The command set of protocol 1.2 contains `HELLO`, `CAPS`, `LED_SET`,
+`LED_GET`, `QSPI_ID`, `QSPI_READ`, `QSPI_ERASE` and `QSPI_WRITE`. Additional commands
 SHALL be specified in section 6 before either endpoint implements them.
 
 ### 1.1 Conventions
@@ -146,7 +150,7 @@ This document uses three independent version identifiers:
 | Protocol version | `proto` field of the readiness banner | Identifies the wire protocol implemented by the firmware. |
 | Firmware version | `fw` field of the readiness banner | Identifies the firmware image. |
 
-This revision of the document specifies protocol version **1.1**. A document
+This revision of the document specifies protocol version **1.2**. A document
 revision MAY change without changing the protocol version, for example to
 clarify wording.
 
@@ -494,7 +498,7 @@ Example (informative), with a single page:
 
 ```text
 CMD id=2 command=CAPS
-RESULT id=2 status=OK total=3 start=0 names=HELLO,CAPS,QSPI_READ_ID
+RESULT id=2 status=OK total=8 start=0 names=HELLO,CAPS,LED_SET,LED_GET,QSPI_ID,QSPI_READ,QSPI_ERASE,QSPI_WRITE
 END id=2
 ```
 
@@ -502,7 +506,7 @@ Example (informative), with two pages:
 
 ```text
 CMD id=2 command=CAPS
-RESULT id=2 status=OK total=12 start=0 names=HELLO,CAPS,QSPI_READ_ID,SDRAM_TEST next=4
+RESULT id=2 status=OK total=12 start=0 names=HELLO,CAPS,QSPI_ID,SDRAM_TEST next=4
 END id=2
 CMD id=3 command=CAPS start=4
 RESULT id=3 status=OK total=12 start=4 names=...
@@ -561,10 +565,164 @@ RESULT id=4 status=OK state=on
 END id=4
 ```
 
-### 6.6 Future commands (informative)
+### 6.6 QSPI commands
+
+`QSPI_ID`, `QSPI_READ`, `QSPI_ERASE` and `QSPI_WRITE` access the 16 MB
+N25Q128A serial NOR flash of the board through the QUADSPI interface in
+indirect mode [N4] [N5]. The following rules apply to the four commands.
+
+| Item | Rule |
+|:--|:--|
+| Address | `addr` is a byte offset in the flash, not an address of the memory-mapped region: `0x` followed by 1 to 8 hexadecimal digits. |
+| Data | `data` is a sequence of 2 to 64 hexadecimal digits, an even number of them, two per byte; the first byte is at the lowest address. |
+| Digit case | The firmware SHALL accept hexadecimal digits in uppercase or lowercase, and SHALL send them in uppercase. The prefix is always a lowercase `0x`. |
+| Test area | The last 64 KB block of the flash, from `0x00FF0000` to `0x00FFFFFF`. The firmware SHALL reject any erase or write outside the test area; reads are allowed in the whole flash. |
+| Page | The flash is programmed by 256-byte pages; each page starts at a multiple of `0x100`. The bytes of one `QSPI_WRITE` SHALL be within one page: `(addr mod 256) + n ≤ 256`, where n is the number of bytes. |
+
+The test area protects the rest of the flash, which may hold an application
+executed in place. The host SHALL NOT assume anything about the content of
+the test area at the start of a session.
+
+Test area layout (informative). Block and page numbers are relative to the
+test area: block b starts at `0x00FF0000 + b × 0x1000` and page p at
+`0x00FF0000 + p × 0x100`.
+
+```text
+Test area: 0x00FF0000 – 0x00FFFFFF (64 KB = 16 blocks = 256 pages)
+
+Block 0   0x00FF0000 – 0x00FF0FFF   (4096 bytes, one QSPI_ERASE)
+  Page 0    0x00FF0000 – 0x00FF00FF
+  Page 1    0x00FF0100 – 0x00FF01FF
+  ...
+  Page 15   0x00FF0F00 – 0x00FF0FFF
+Block 1   0x00FF1000 – 0x00FF1FFF
+  Page 16   0x00FF1000 – 0x00FF10FF
+  ...
+Block 15  0x00FFF000 – 0x00FFFFFF
+  ...
+  Page 255  0x00FFFF00 – 0x00FFFFFF
+```
+
+A write that starts at a multiple of 32 never crosses a page, since it holds
+32 bytes at most and 256 is a multiple of 32. The host writes longer data in
+32-byte pieces at such addresses, or splits a write at the page boundary
+(informative):
+
+```text
+CMD id=9 command=QSPI_WRITE addr=0x00FF00FE data=0102
+CMD id=10 command=QSPI_WRITE addr=0x00FF0100 data=03
+```
+
+### 6.7 `QSPI_ID`
+
+`QSPI_ID` reads the JEDEC identifier of the flash (instruction `0x9F`).
+
+| Item | Specification |
+|:--|:--|
+| Arguments | None. |
+| Success result | `jedec_id=0x<8 hexadecimal digits>` |
+| Error codes | `INVALID_ARGUMENT` if any argument is present. `DEVICE_TIMEOUT` if the flash does not answer. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | None. |
+
+Result fields:
+
+| Field | Value |
+|:--|:--|
+| `jedec_id` | The three identifier bytes, the first byte received in bits 7:0: manufacturer [I4], memory type, then capacity. For the N25Q128A: `0x0018BA20`. |
+
+Example (informative):
+
+```text
+CMD id=5 command=QSPI_ID
+RESULT id=5 status=OK jedec_id=0x0018BA20
+END id=5
+```
+
+### 6.8 `QSPI_READ`
+
+`QSPI_READ` reads bytes from the flash.
+
+| Item | Specification |
+|:--|:--|
+| Arguments | `addr` (required): first byte, as defined in section 6.6. `len` (required): number of bytes, unsigned decimal integer from 1 to 32. |
+| Success result | `data=<2 × len hexadecimal digits>` |
+| Error codes | `INVALID_ARGUMENT` if an argument is missing, malformed or out of range, if `addr + len` exceeds `0x01000000`, or if any other argument is present. `DEVICE_TIMEOUT` if the flash does not answer. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | None. |
+
+Result fields:
+
+| Field | Value |
+|:--|:--|
+| `data` | The `len` bytes read from `addr`, as defined in section 6.6. |
+
+Example (informative):
+
+```text
+CMD id=6 command=QSPI_READ addr=0x00FF0000 len=4
+RESULT id=6 status=OK data=FFFFFFFF
+END id=6
+```
+
+### 6.9 `QSPI_ERASE`
+
+`QSPI_ERASE` erases one 4 KB block of the test area (instruction `0x20`).
+
+| Item | Specification |
+|:--|:--|
+| Arguments | `addr` (required): first byte of the block, as defined in section 6.6, a multiple of 4096 within the test area. |
+| Success result | No result field. |
+| Error codes | `INVALID_ARGUMENT` if `addr` is missing, malformed, not a multiple of 4096 or outside the test area, or if any other argument is present. `DEVICE_TIMEOUT` if the erase does not end within the firmware's internal time limit. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | The 4096 bytes of the block read `0xFF`. |
+
+Firmware requirements:
+
+- The internal time limit of the erase SHALL cover the maximum 4 KB erase
+  time of the flash [N5] and SHALL leave enough time to send `END` within the
+  timeout. The HIL bench firmware uses 1 s.
+
+Example (informative):
+
+```text
+CMD id=7 command=QSPI_ERASE addr=0x00FF0000
+RESULT id=7 status=OK
+END id=7
+```
+
+### 6.10 `QSPI_WRITE`
+
+`QSPI_WRITE` programs bytes of the test area (instruction `0x02`).
+
+| Item | Specification |
+|:--|:--|
+| Arguments | `addr` (required): first byte, as defined in section 6.6. `data` (required): 1 to 32 bytes, as defined in section 6.6. |
+| Success result | No result field. |
+| Error codes | `INVALID_ARGUMENT` if an argument is missing or malformed, if the bytes are not all within the test area, if they cross a 256-byte page boundary (section 6.6), or if any other argument is present. `DEVICE_TIMEOUT` if the program does not end within the firmware's internal time limit. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | Each byte becomes the bitwise AND of its previous value and the written value: programming only changes bits from 1 to 0. |
+
+Firmware requirements:
+
+- The internal time limit of the program SHALL cover the maximum page program
+  time of the flash [N5] and SHALL leave enough time to send `END` within the
+  timeout. The HIL bench firmware uses 100 ms.
+- The firmware does not read the bytes back. The host SHALL use `QSPI_READ` to
+  check the result.
+
+Example (informative):
+
+```text
+CMD id=8 command=QSPI_WRITE addr=0x00FF0000 data=0123ABCD
+RESULT id=8 status=OK
+END id=8
+```
+
+### 6.11 Future commands (informative)
 
 The following example shows how a future peripheral command would use the
-same envelope. `QSPI_READ_ID` is not part of protocol version 1.1 and SHALL
+same envelope. `SDRAM_TEST` is not part of protocol version 1.2 and SHALL
 NOT be implemented until it is specified according to section 6.1.
 
 ```text
@@ -716,7 +874,8 @@ a reference is dated, only the cited edition applies.
 | [N1] | IETF, *Key words for use in RFCs to Indicate Requirement Levels*, RFC 2119 (BCP 14), March 1997. <https://www.rfc-editor.org/rfc/rfc2119> | Meaning of SHALL, SHOULD, MAY (section 1.1). |
 | [N2] | IETF, *Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words*, RFC 8174 (BCP 14), May 2017. <https://www.rfc-editor.org/rfc/rfc8174> | Key words apply only in uppercase (section 1.1). |
 | [N3] | ANSI, *Coded Character Set – 7-Bit American Standard Code for Information Interchange*, ANSI X3.4-1986 (equivalent: ISO/IEC 646, International Reference Version). | Character set and byte values of records (section 2.2). |
-| [N4] | STMicroelectronics, *RM0385 Reference manual – STM32F75xxx and STM32F74xxx advanced Arm®-based 32-bit MCUs*, Rev. <x>. <https://www.st.com/resource/en/reference_manual/rm0385-stm32f75xxx-and-stm32f74xxx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf> | USART framing and error flags (FE, ORE) (section 2.4); reset flags of `RCC_CSR` and clearing with `RMVF` (banner `reset` field); GPIO input data register (sections 6.4 and 6.5). |
+| [N4] | STMicroelectronics, *RM0385 Reference manual – STM32F75xxx and STM32F74xxx advanced Arm®-based 32-bit MCUs*, Rev. <x>. <https://www.st.com/resource/en/reference_manual/rm0385-stm32f75xxx-and-stm32f74xxx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf> | USART framing and error flags (FE, ORE) (section 2.4); reset flags of `RCC_CSR` and clearing with `RMVF` (banner `reset` field); GPIO input data register (sections 6.4 and 6.5); QUADSPI indirect mode (sections 6.6 to 6.10). |
+| [N5] | Micron, *N25Q128A 128Mb 3V multiple I/O serial flash memory* datasheet. <https://www.micron.com/products/storage/nor-flash/serial-nor> | Instructions, JEDEC identifier, 256-byte page, 4 KB erase block, and maximum erase and program times (sections 6.6 to 6.10). |
 
 ### 9.2 Informative references
 
@@ -728,10 +887,10 @@ required to implement this specification.
 | [I1] | IETF, *Augmented BNF for Syntax Specifications: ABNF*, RFC 5234 (STD 68), January 2008. <https://www.rfc-editor.org/rfc/rfc5234> | Recommended notation for a formal grammar of records. |
 | [I2] | T. Preston-Werner, *Semantic Versioning 2.0.0*. <https://semver.org/spec/v2.0.0.html> | Model for the `major.minor` protocol version (section 3) and the `fw` version. |
 | [I3] | USB Implementers Forum, *Class Definitions for Communication Devices*, Revision 1.2, and *PSTN Devices* subclass, Revision 1.2. <https://www.usb.org/document-library/class-definitions-communication-devices-12> | USB CDC-ACM class used by the ST-LINK virtual COM port. |
-| [I4] | JEDEC, *JEP106 – Standard Manufacturer's Identification Code*, latest revision. <https://www.jedec.org/standards-documents/docs/jep-106ab> | Manufacturer byte of the JEDEC identifier (section 6.6 example). |
+| [I4] | JEDEC, *JEP106 – Standard Manufacturer's Identification Code*, latest revision. <https://www.jedec.org/standards-documents/docs/jep-106ab> | Manufacturer byte of the JEDEC identifier (section 6.7). |
 | [I5] | JEDEC, *JESD216 – Serial Flash Discoverable Parameters (SFDP)*, latest revision. <https://www.jedec.org/standards-documents/docs/jesd216b> | Identification of serial flash devices for future QSPI commands. |
 | [I6] | ISO/IEC/IEEE 29119-3, *Software and systems engineering – Software testing – Part 3: Test documentation*. | Structure of test reports (section 8.4). |
-| [I7] | STMicroelectronics, *STM32F7508-DK* product page and user manual. <https://www.st.com/en/evaluation-tools/stm32f7508-dk.html> | Board wiring of USART1 to the ST-LINK virtual COM port, and of the user LED LD1 to PI1 (sections 6.4 and 6.5). |
+| [I7] | STMicroelectronics, *STM32F7508-DK* product page and user manual. <https://www.st.com/en/evaluation-tools/stm32f7508-dk.html> | Board wiring of USART1 to the ST-LINK virtual COM port, of the user LED LD1 to PI1 (sections 6.4 and 6.5), and of the N25Q128A flash to the QUADSPI (section 6.6). |
 
 ### 9.3 Related open-source projects (informative)
 
