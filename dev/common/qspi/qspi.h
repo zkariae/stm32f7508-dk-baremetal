@@ -5,8 +5,8 @@
 \brief      QUADSPI driver for a single serial NOR flash.
 
 \author     Z. BEN-AKKA
-\version    1.3
-\date       27/10/2026
+\version    1.4
+\date       28/10/2026
 
 \details
   Chip independent: the flash size, read command and dummy cycles are
@@ -26,6 +26,7 @@
 | 1.1     | 10/10/2026 | Z. BEN-AKKA | Generic: flash size and commands are params. |
 | 1.2     | 11/10/2026 | Z. BEN-AKKA | Pins configured by the applications.         |
 | 1.3     | 27/10/2026 | Z. BEN-AKKA | Status, read, 4 KB erase and page program.   |
+| 1.4     | 28/10/2026 | Z. BEN-AKKA | QspiInit: timing and prescaler choice.       |
 ****************************
 */
 
@@ -36,6 +37,11 @@
 
 /*!
 \brief  Enable the QUADSPI clock and configure it for one flash.
+\details NCS stays high at least 6 cycles between commands and data are
+         sampled half a cycle late, both needed at 108 MHz. Choose prescaler
+         so the QUADSPI clock stays within the flash maximum at the highest
+         HCLK of the image: an application started in place may raise HCLK,
+         which raises the QUADSPI clock too (N25Q128A: 108 MHz, so 1 at 216 MHz).
 \param  size_log2  Flash size as a power of two (24 for 16 MB).
 \param  prescaler  QUADSPI clock = HCLK / (prescaler + 1).
 */
