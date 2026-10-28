@@ -5,8 +5,8 @@
 \brief      Minimal HIL protocol constants for the bench firmware.
 
 \author     Z. BEN-AKKA
-\version    1.2
-\date       27/10/2026
+\version    1.3
+\date       28/10/2026
 
 \details
   Defines the fixed UART, record, key and readiness-banner values shared by
@@ -19,6 +19,7 @@
 | 1.0     | 16/10/2026 | Z. BEN-AKKA | Initial version.                 |
 | 1.1     | 23/10/2026 | Z. BEN-AKKA | Build ID from hil_build.h; banner, HELLO and CAPS keys. |
 | 1.2     | 27/10/2026 | Z. BEN-AKKA | Protocol 1.1: LED_SET and LED_GET names and keys; fw 1.1.0. |
+| 1.3     | 28/10/2026 | Z. BEN-AKKA | Protocol 1.2: QSPI command names, keys and limits; fw 1.2.0. |
 ****************************
 */
 
@@ -32,8 +33,8 @@
 
 /* ---- Protocol version (section 3) -------------------------------------- */
 #define HIL_PROTO_VERSION_MAJOR 1u
-#define HIL_PROTO_VERSION_MINOR 1u
-#define HIL_PROTO_VERSION_STR   "1.1"
+#define HIL_PROTO_VERSION_MINOR 2u
+#define HIL_PROTO_VERSION_STR   "1.2"
 
 /* ---- Line framing (section 2.2) ---------------------------------------- */
 /** Maximum line length in bytes, excluding the terminator. */
@@ -77,6 +78,24 @@
 #define HIL_LED_OFF    "off"
 #define HIL_LED_TOGGLE "toggle"
 
+/* ---- QSPI keys and limits (sections 6.6 to 6.10) ----------------------- */
+#define HIL_KEY_JEDEC_ID "jedec_id"
+#define HIL_KEY_ADDR     "addr"
+#define HIL_KEY_LEN      "len"
+#define HIL_KEY_DATA     "data"
+/** Most data bytes in one QSPI_READ or QSPI_WRITE. */
+#define HIL_QSPI_DATA_MAX   32u
+/** Flash size: addr + len must not exceed it. */
+#define HIL_QSPI_FLASH_SIZE 0x01000000u
+/** Test zone, the only area erased and written; the end is excluded. */
+#define HIL_QSPI_TEST_START 0x00FF0000u
+#define HIL_QSPI_TEST_END   0x01000000u
+#define HIL_QSPI_ERASE_SIZE 4096u
+#define HIL_QSPI_PAGE_SIZE  256u
+/** Internal wait limits of QSPI_ERASE and QSPI_WRITE. */
+#define HIL_QSPI_ERASE_TIMEOUT_MS   1000u
+#define HIL_QSPI_PROGRAM_TIMEOUT_MS 100u
+
 #define HIL_STATUS_OK   "OK"
 #define HIL_STATUS_ERR  "ERR"
 
@@ -90,6 +109,10 @@
 #define HIL_CMD_CAPS         "CAPS"
 #define HIL_CMD_LED_SET      "LED_SET"
 #define HIL_CMD_LED_GET      "LED_GET"
+#define HIL_CMD_QSPI_ID      "QSPI_ID"
+#define HIL_CMD_QSPI_READ    "QSPI_READ"
+#define HIL_CMD_QSPI_ERASE   "QSPI_ERASE"
+#define HIL_CMD_QSPI_WRITE   "QSPI_WRITE"
 #define HIL_CAPS_TOTAL_MIN   2u
 #define HIL_CAPS_TOTAL_MAX   255u
 
@@ -118,7 +141,7 @@
 #define HIL_FW_NAME         "hil-bench"
 
 /* Readiness banner values (protocol section 4.1). */
-#define HIL_FW_VERSION      "1.1.0"
+#define HIL_FW_VERSION      "1.2.0"
 #define HIL_RESET_UNKNOWN   "unknown"
 
 #endif /* HIL_PROTOCOL_H */
