@@ -5,13 +5,15 @@
 \brief      Bootloader: map the QSPI flash and start the application in place.
 
 \author     Z. BEN-AKKA
-\version    1.5
-\date       11/10/2026
+\version    1.6
+\date       28/10/2026
 
 \details
   Runs from the internal flash and:
   1) Resets the N25Q128A and checks its JEDEC ID (common/qspi).
-  2) Switches the QUADSPI to memory-mapped mode (0x90000000, 1-1-4 reads).
+  2) Switches the QUADSPI to memory-mapped mode (0x90000000, 1-1-4 reads) at
+     HCLK / 2, so the application may raise HCLK up to 216 MHz without
+     exceeding the 108 MHz of the flash.
   3) Checks the application's initial SP and PC.
   4) Enables the I-cache, sets VTOR and jumps to the application (common/boot).
   The core stays on HSI: common/startup.c resets on any other clock source.
@@ -27,6 +29,7 @@
 | 1.3     | 10/10/2026 | Z. BEN-AKKA | Generic drivers, board specifics from common/board. |
 | 1.4     | 11/10/2026 | Z. BEN-AKKA | Board wiring defined in the application.            |
 | 1.5     | 11/10/2026 | Z. BEN-AKKA | Board wiring from stm32f7508-dk/.                   |
+| 1.6     | 28/10/2026 | Z. BEN-AKKA | QUADSPI at HCLK / 2: app may run at 216 MHz.        |
 ****************************
 */
 
@@ -111,6 +114,8 @@ static void read_app_vector(uint32_t *sp, uint32_t *pc)
 \details
   The application inherits the memory-mapped QUADSPI and its pins (it must
   not reconfigure them), USART1 on PA9, the I-cache, and VTOR on its table.
+  It may change HCLK but not the QUADSPI prescaler: writing QUADSPI_CR
+  while running in place would stop the code fetches.
 
 \param  sp  Initial stack pointer.
 \param  pc  Reset handler address.
@@ -133,7 +138,7 @@ int main(void)
   UartPuts(console, "\nboot: 08-custombootloader\n");
 
   BoardQspiPinsInit();
-  QspiInit(N25Q128A_SIZE_LOG2, 0); // HCLK / 1
+  QspiInit(N25Q128A_SIZE_LOG2, 1); // HCLK / 2: 8 MHz on HSI, 108 MHz if the application runs at 216 MHz
   if (QspiSoftwareReset() != SUCCESS) {
     fail("QSPI stuck busy", 0);
   }
