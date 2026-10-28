@@ -5,7 +5,7 @@
 \brief      HIL firmware-to-host protocol specification.
 
 \author     Z. BEN-AKKA
-\version    1.7
+\version    1.8
 \date       28/10/2026
 
 \details
@@ -25,6 +25,7 @@
 | 1.5     | 28/10/2026 | Z. BEN-AKKA | Specify QSPI_ID, QSPI_READ, QSPI_ERASE and QSPI_WRITE; protocol 1.2. |
 | 1.6     | 28/10/2026 | Z. BEN-AKKA | Limit QSPI data to 32 bytes: lines are 128 bytes at most. |
 | 1.7     | 28/10/2026 | Z. BEN-AKKA | QSPI_ID result field jedec_id: id is a reserved key. |
+| 1.8     | 28/10/2026 | Z. BEN-AKKA | QSPI: page rule and test area layout (section 6.6). |
 ****************************
 -->
 
@@ -576,10 +577,41 @@ indirect mode [N4] [N5]. The following rules apply to the four commands.
 | Data | `data` is a sequence of 2 to 64 hexadecimal digits, an even number of them, two per byte; the first byte is at the lowest address. |
 | Digit case | The firmware SHALL accept hexadecimal digits in uppercase or lowercase, and SHALL send them in uppercase. The prefix is always a lowercase `0x`. |
 | Test area | The last 64 KB block of the flash, from `0x00FF0000` to `0x00FFFFFF`. The firmware SHALL reject any erase or write outside the test area; reads are allowed in the whole flash. |
+| Page | The flash is programmed by 256-byte pages; each page starts at a multiple of `0x100`. The bytes of one `QSPI_WRITE` SHALL be within one page: `(addr mod 256) + n ≤ 256`, where n is the number of bytes. |
 
 The test area protects the rest of the flash, which may hold an application
 executed in place. The host SHALL NOT assume anything about the content of
 the test area at the start of a session.
+
+Test area layout (informative). Block and page numbers are relative to the
+test area: block b starts at `0x00FF0000 + b × 0x1000` and page p at
+`0x00FF0000 + p × 0x100`.
+
+```text
+Test area: 0x00FF0000 – 0x00FFFFFF (64 KB = 16 blocks = 256 pages)
+
+Block 0   0x00FF0000 – 0x00FF0FFF   (4096 bytes, one QSPI_ERASE)
+  Page 0    0x00FF0000 – 0x00FF00FF
+  Page 1    0x00FF0100 – 0x00FF01FF
+  ...
+  Page 15   0x00FF0F00 – 0x00FF0FFF
+Block 1   0x00FF1000 – 0x00FF1FFF
+  Page 16   0x00FF1000 – 0x00FF10FF
+  ...
+Block 15  0x00FFF000 – 0x00FFFFFF
+  ...
+  Page 255  0x00FFFF00 – 0x00FFFFFF
+```
+
+A write that starts at a multiple of 32 never crosses a page, since it holds
+32 bytes at most and 256 is a multiple of 32. The host writes longer data in
+32-byte pieces at such addresses, or splits a write at the page boundary
+(informative):
+
+```text
+CMD id=9 command=QSPI_WRITE addr=0x00FF00FE data=0102
+CMD id=10 command=QSPI_WRITE addr=0x00FF0100 data=03
+```
 
 ### 6.7 `QSPI_ID`
 
@@ -667,7 +699,7 @@ END id=7
 |:--|:--|
 | Arguments | `addr` (required): first byte, as defined in section 6.6. `data` (required): 1 to 32 bytes, as defined in section 6.6. |
 | Success result | No result field. |
-| Error codes | `INVALID_ARGUMENT` if an argument is missing or malformed, if the bytes are not all within the test area, if they cross a 256-byte page boundary, or if any other argument is present. `DEVICE_TIMEOUT` if the program does not end within the firmware's internal time limit. `BAD_REQUEST` as defined in section 5.2.1. |
+| Error codes | `INVALID_ARGUMENT` if an argument is missing or malformed, if the bytes are not all within the test area, if they cross a 256-byte page boundary (section 6.6), or if any other argument is present. `DEVICE_TIMEOUT` if the program does not end within the firmware's internal time limit. `BAD_REQUEST` as defined in section 5.2.1. |
 | Timeout | 2 s. |
 | Side effects | Each byte becomes the bitwise AND of its previous value and the written value: programming only changes bits from 1 to 0. |
 
