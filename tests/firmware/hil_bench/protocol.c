@@ -5,8 +5,8 @@
 \brief      Split received records into tokens and write records to send.
 
 \author     Z. BEN-AKKA
-\version    1.0
-\date       23/10/2026
+\version    1.1
+\date       28/10/2026
 
 \details
   Implements the record syntax of protocol.md section 2.3. Received lines
@@ -18,12 +18,16 @@
 | Version | Date       | Author      | Description      |
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 23/10/2026 | Z. BEN-AKKA | Initial version. |
+| 1.1     | 28/10/2026 | Z. BEN-AKKA | Parse hexadecimal values and bytes; add hexadecimal bytes. |
 ****************************
 */
 
 #include "protocol.h"
 
 #include "board.h"
+
+/// Hexadecimal digits written in records, uppercase (section 6.6).
+static const char hex_digits[] = "0123456789ABCDEF";
 
 /// A key starts with a lowercase letter (section 2.3).
 static int IsKeyStart(char c)
@@ -35,6 +39,21 @@ static int IsKeyStart(char c)
 static int IsKeyChar(char c)
 {
   return IsKeyStart(c) || (c >= '0' && c <= '9') || c == '_';
+}
+
+/// Value of a hexadecimal digit in either case, or -1.
+static int HexValue(char c)
+{
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  if (c >= 'A' && c <= 'F') {
+    return c - 'A' + 10;
+  }
+  if (c >= 'a' && c <= 'f') {
+    return c - 'a' + 10;
+  }
+  return -1;
 }
 
 uint32_t RecordSplit(char *line, char *tokens[RECORD_MAX_TOKENS])
@@ -101,6 +120,46 @@ int RecordParseDec(const char *text, uint32_t max, uint32_t *value)
   return 1;
 }
 
+int RecordParseHex32(const char *text, uint32_t *value)
+{
+  uint32_t v = 0u;
+  uint32_t count = 0u;
+
+  if (text[0] != '0' || text[1] != 'x') {
+    return 0;
+  }
+  for (const char *p = text + 2; *p != '\0'; ++p) {
+    int digit = HexValue(*p);
+    if (digit < 0 || ++count > 8u) {
+      return 0; // Not a digit, or more than eight
+    }
+    v = (v << 4) | (uint32_t)digit;
+  }
+  if (count == 0u) {
+    return 0; // 0x alone
+  }
+  *value = v;
+  return 1;
+}
+
+uint32_t RecordParseHexBytes(const char *text, uint8_t *bytes, uint32_t max)
+{
+  uint32_t count = 0u;
+
+  for (const char *p = text; *p != '\0'; p += 2) {
+    if (p[1] == '\0' || count == max) {
+      return 0; // Odd number of digits, or too many bytes
+    }
+    int high = HexValue(p[0]);
+    int low = HexValue(p[1]);
+    if (high < 0 || low < 0) {
+      return 0;
+    }
+    bytes[count++] = (uint8_t)((high << 4) | low);
+  }
+  return count;
+}
+
 int RecordStrEq(const char *a, const char *b)
 {
   while (*a != '\0' && *a == *b) {
@@ -165,16 +224,30 @@ void RecordAddDec(Record *record, const char *key, uint32_t value)
 
 void RecordAddHex32(Record *record, const char *key, uint32_t value)
 {
-  static const char hex[] = "0123456789ABCDEF";
   char text[11]; // 0x, eight digits and the NUL
 
   text[0] = '0';
   text[1] = 'x';
   for (uint32_t i = 0u; i < 8u; ++i) {
-    text[2u + i] = hex[(value >> (28u - 4u * i)) & 0xFu];
+    text[2u + i] = hex_digits[(value >> (28u - 4u * i)) & 0xFu];
   }
   text[10] = '\0';
   RecordAdd(record, key, text);
+}
+
+void RecordAddHexBytes(Record *record, const char *key, const uint8_t *bytes, uint32_t len)
+{
+  char pair[3]; // Two digits and the NUL
+
+  RecordPut(record, " ");
+  RecordPut(record, key);
+  RecordPut(record, "=");
+  pair[2] = '\0';
+  for (uint32_t i = 0u; i < len; ++i) {
+    pair[0] = hex_digits[bytes[i] >> 4];
+    pair[1] = hex_digits[bytes[i] & 0xFu];
+    RecordPut(record, pair);
+  }
 }
 
 uint32_t RecordRoom(const Record *record)
