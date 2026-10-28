@@ -5,7 +5,7 @@
 \brief      QUADSPI driver for a single serial NOR flash.
 
 \author     Z. BEN-AKKA
-\version    1.5
+\version    1.6
 \date       28/10/2026
 
 \details
@@ -20,6 +20,7 @@
 | 1.3     | 11/10/2026 | Z. BEN-AKKA | Registers from the board's mcu.h.            |
 | 1.4     | 27/10/2026 | Z. BEN-AKKA | Bound the TCF, FTF and ABORT waits.          |
 | 1.5     | 28/10/2026 | Z. BEN-AKKA | Status, read, 4 KB erase and page program.   |
+| 1.6     | 28/10/2026 | Z. BEN-AKKA | NCS high 6 cycles, half-cycle sample shift.  |
 ****************************
 */
 
@@ -173,8 +174,8 @@ void QspiInit(uint32_t size_log2, uint32_t prescaler)
   RCC_AHB3ENR |= RCC_AHB3ENR_QSPIEN;
   (void)RCC_AHB3ENR;
 
-  QSPI_DCR = QSPI_DCR_FSIZE(size_log2 - 1U) | QSPI_DCR_CSHT(1);
-  QSPI_CR = QSPI_CR_PRESCALER(prescaler) | QSPI_CR_EN;
+  QSPI_DCR = QSPI_DCR_FSIZE(size_log2 - 1U) | QSPI_DCR_CSHT(5); // NCS high 6 cycles: 55 ns at 108 MHz, tSHSL 50 ns
+  QSPI_CR = QSPI_CR_PRESCALER(prescaler) | QSPI_CR_SSHIFT | QSPI_CR_EN; // Sample half a cycle later
 }
 
 int QspiCommand(uint8_t cmd)
