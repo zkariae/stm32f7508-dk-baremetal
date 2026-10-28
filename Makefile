@@ -5,7 +5,7 @@
 # \brief      Build, flash and document project images for a board.
 #
 # \author     Z. BEN-AKKA
-# \version    1.11
+# \version    1.12
 # \date       28/10/2026
 #
 # \details
@@ -21,6 +21,8 @@
 #   shared GPIO, UART and LED modules; hil-bench adds its protocol modules
 #   and headers, and the delay and QSPI modules. hil-bench also gets
 #   hil_build.h, the git revision it was built from, for its readiness banner.
+#   07-lcd-logo-xip pairs the 08 bootloader with 07-lcd-logo run in place
+#   from QSPI.
 #     make 01-blink            build one application
 #     make 01-blink-flash      build and flash it with the ST-LINK
 #     make BOARD=<name> ...    build for another board folder
@@ -41,6 +43,7 @@
 # | 1.9     | 23/10/2026 | Z. BEN-AKKA | Link the protocol modules into the hil-bench image.         |
 # | 1.10    | 26/10/2026 | Z. BEN-AKKA | Add the reset-sw target (software reset).                   |
 # | 1.11    | 28/10/2026 | Z. BEN-AKKA | Link the delay and QSPI modules into the hil-bench image.   |
+# | 1.12    | 28/10/2026 | Z. BEN-AKKA | Add 07-lcd-logo-xip: the logo run in place from QSPI.       |
 # ****************************
 # */
 
@@ -121,7 +124,17 @@ BOOT_MODULES := boot delay gpio led qspi uart
 09-securebootloader-app_MODULES  := $(01-blink_MODULES)
 09-securebootloader-app_MEMORY   := qspi
 
-MULTI  := 08-custombootloader 09-securebootloader
+# 07 run in place: the 08 bootloader, and 07-lcd-logo, unchanged, relinked to
+# run from QSPI. The bootloader runs the QUADSPI at HCLK / 2, so the logo
+# application may switch to 216 MHz.
+07-lcd-logo-xip_IMAGES       := 07-lcd-logo-xip-app 07-lcd-logo-xip-boot
+07-lcd-logo-xip-boot_SRCS    := $(APPS_DIR)/08-custombootloader/main.c
+07-lcd-logo-xip-boot_MODULES := $(BOOT_MODULES)
+07-lcd-logo-xip-app_SRCS     := $(APPS_DIR)/07-lcd-logo/main.c
+07-lcd-logo-xip-app_MODULES  := $(07-lcd-logo_MODULES)
+07-lcd-logo-xip-app_MEMORY   := qspi
+
+MULTI  := 08-custombootloader 09-securebootloader 07-lcd-logo-xip
 APPS   := $(SINGLE) $(MULTI) hil-bench uart-diag
 IMAGES := $(foreach a,$(APPS),$($(a)_IMAGES))
 
@@ -305,7 +318,7 @@ help:
 	@echo "  <app>-dfu            build and flash the internal-flash image over USB DFU"
 	@echo "  <app>-clean          remove its build outputs"
 	@echo ""
-	@echo "Per image (an application, or 08/09's <app>-boot and <app>-app):"
+	@echo "Per image (an application, or 08/09/07-lcd-logo-xip's <app>-boot and <app>-app):"
 	@echo "  <image>-size         flash and RAM usage"
 	@echo "  <image>-disasm       disassembly"
 	@echo "  <image>-sections     section addresses"
