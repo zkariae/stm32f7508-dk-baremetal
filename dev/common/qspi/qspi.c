@@ -5,8 +5,8 @@
 \brief      QUADSPI driver for a single serial NOR flash.
 
 \author     Z. BEN-AKKA
-\version    1.4
-\date       27/10/2026
+\version    1.5
+\date       28/10/2026
 
 \details
   API documented in qspi.h.
@@ -19,11 +19,13 @@
 | 1.2     | 11/10/2026 | Z. BEN-AKKA | Pins configured by the applications.         |
 | 1.3     | 11/10/2026 | Z. BEN-AKKA | Registers from the board's mcu.h.            |
 | 1.4     | 27/10/2026 | Z. BEN-AKKA | Bound the TCF, FTF and ABORT waits.          |
+| 1.5     | 28/10/2026 | Z. BEN-AKKA | Status, read, 4 KB erase and page program.   |
 ****************************
 */
 
 #include "qspi/qspi.h"
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "defines.h"
@@ -31,11 +33,23 @@
 #include "delay/delay.h"
 
 // JEDEC standard instructions
-#define CMD_RESET_ENABLE 0x66
-#define CMD_RESET_MEMORY 0x99
-#define CMD_READ_ID      0x9F
+#define CMD_RESET_ENABLE  0x66
+#define CMD_RESET_MEMORY  0x99
+#define CMD_READ_ID       0x9F
+#define CMD_READ_STATUS   0x05
+#define CMD_WRITE_ENABLE  0x06
+#define CMD_READ          0x03
+#define CMD_PAGE_PROGRAM  0x02
+#define CMD_ERASE_4K      0x20
+
+#define STATUS_WIP    (1U << 0) ///< Status register: write in progress.
+#define PAGE_SIZE     256U      ///< Bytes of one program page.
+#define ERASE_4K_SIZE 4096U     ///< Bytes of one 4 KB erase block.
 
 #define QSPI_BUSY_TIMEOUT 1000000U ///< Polls of a status flag before giving up.
+
+/// Instruction on one line, then a 24-bit address on one line.
+#define CCR_ADDR_1LINE (QSPI_CCR_ADSIZE_24 | QSPI_CCR_ADMODE(1) | QSPI_CCR_IMODE(1))
 
 /*!
 \brief  Wait for the QUADSPI to be idle.
@@ -81,6 +95,79 @@ static int qspi_abort(void)
   return SUCCESS;
 }
 
+/*!
+\brief  Indirect read: send the command, then read len bytes.
+\details The transfer starts on the CCR write, or on the AR write when the
+         command has an address phase.
+\param  ccr   CCR value: FMODE_READ, the phases and the instruction.
+\param  addr  Address, used only when ccr has an address phase.
+\param  data  Output buffer of len bytes.
+\param  len   Number of bytes, at least 1.
+\return SUCCESS, or TIMEOUT.
+*/
+static int qspi_read_bytes(uint32_t ccr, uint32_t addr, uint8_t *data, uint32_t len)
+{
+  if (qspi_wait_idle() != SUCCESS) {
+    return TIMEOUT;
+  }
+  QSPI_DLR = len - 1U;
+  QSPI_CCR = ccr;
+  if (ccr & QSPI_CCR_ADMODE(3)) {
+    QSPI_AR = addr;
+  }
+  for (uint32_t i = 0; i < len; i++) {
+    if (qspi_wait_flag(QSPI_SR_FTF) != SUCCESS) {
+      qspi_abort();
+      return TIMEOUT;
+    }
+    data[i] = QSPI_DR8;
+  }
+  if (qspi_wait_flag(QSPI_SR_TCF) != SUCCESS) {
+    qspi_abort();
+    return TIMEOUT;
+  }
+  QSPI_FCR = QSPI_FCR_CTCF;
+
+  // ES0290 errata: an indirect read may leave BUSY set; abort returns to idle
+  return qspi_abort();
+}
+
+/*!
+\brief  Indirect write: send the command and its address, then len bytes.
+\details The transfer starts on the AR write, or on the first data byte when
+         the command has a data phase.
+\param  ccr   CCR value: FMODE_WRITE, the phases and the instruction.
+\param  addr  Address of the command.
+\param  data  Bytes to send; unused when len is 0.
+\param  len   Number of bytes, 0 for a command with an address only.
+\return SUCCESS, or TIMEOUT.
+*/
+static int qspi_write_bytes(uint32_t ccr, uint32_t addr, const uint8_t *data, uint32_t len)
+{
+  if (qspi_wait_idle() != SUCCESS) {
+    return TIMEOUT;
+  }
+  if (len > 0U) {
+    QSPI_DLR = len - 1U;
+    ccr |= QSPI_CCR_DMODE(1);
+  }
+  QSPI_CCR = ccr;
+  QSPI_AR = addr;
+  for (uint32_t i = 0; i < len; i++) {
+    if (qspi_wait_flag(QSPI_SR_FTF) != SUCCESS) {
+      qspi_abort();
+      return TIMEOUT;
+    }
+    QSPI_DR8 = data[i];
+  }
+  if (qspi_wait_flag(QSPI_SR_TCF) != SUCCESS) {
+    qspi_abort();
+    return TIMEOUT;
+  }
+  QSPI_FCR = QSPI_FCR_CTCF;
+  return SUCCESS;
+}
+
 void QspiInit(uint32_t size_log2, uint32_t prescaler)
 {
   RCC_AHB3ENR |= RCC_AHB3ENR_QSPIEN;
@@ -115,32 +202,71 @@ int QspiSoftwareReset(void)
 
 int QspiReadJedecId(uint32_t *id)
 {
-  if (qspi_wait_idle() != SUCCESS) {
+  uint8_t bytes[3];
+
+  if (qspi_read_bytes(QSPI_CCR_FMODE_READ | QSPI_CCR_DMODE(1) | QSPI_CCR_IMODE(1) | CMD_READ_ID, 0,
+                      bytes, sizeof bytes) != SUCCESS) {
     return TIMEOUT;
   }
+  *id = (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8) | ((uint32_t)bytes[2] << 16);
+  return SUCCESS;
+}
 
-  uint32_t value = 0;
-  QSPI_DLR = 3 - 1; // length - 1
-  QSPI_CCR = QSPI_CCR_FMODE_READ | QSPI_CCR_DMODE(1) | QSPI_CCR_IMODE(1) | CMD_READ_ID;
-  for (int i = 0; i < 3; i++) {
-    if (qspi_wait_flag(QSPI_SR_FTF) != SUCCESS) {
-      qspi_abort();
+int QspiReadStatus(uint8_t *status)
+{
+  return qspi_read_bytes(QSPI_CCR_FMODE_READ | QSPI_CCR_DMODE(1) | QSPI_CCR_IMODE(1) | CMD_READ_STATUS,
+                         0, status, 1);
+}
+
+int QspiWaitReady(uint32_t timeout_ms)
+{
+  for (uint32_t ms = 0;; ms++) {
+    uint8_t status;
+
+    if (QspiReadStatus(&status) != SUCCESS) {
       return TIMEOUT;
     }
-    value |= (uint32_t)QSPI_DR8 << (8 * i);
+    if (!(status & STATUS_WIP)) {
+      return SUCCESS;
+    }
+    if (ms >= timeout_ms) {
+      return TIMEOUT;
+    }
+    DelayMs(1);
   }
-  if (qspi_wait_flag(QSPI_SR_TCF) != SUCCESS) {
-    qspi_abort();
-    return TIMEOUT;
-  }
-  QSPI_FCR = QSPI_FCR_CTCF;
+}
 
-  // ES0290 errata: an indirect read may leave BUSY set; abort returns to idle
-  if (qspi_abort() != SUCCESS) {
+int QspiRead(uint32_t addr, uint8_t *data, uint32_t len)
+{
+  if (len == 0U) {
+    return FAILURE;
+  }
+  return qspi_read_bytes(QSPI_CCR_FMODE_READ | QSPI_CCR_DMODE(1) | CCR_ADDR_1LINE | CMD_READ, addr,
+                         data, len);
+}
+
+int QspiErase4K(uint32_t addr, uint32_t timeout_ms)
+{
+  if (addr % ERASE_4K_SIZE != 0U) {
+    return FAILURE;
+  }
+  if (QspiCommand(CMD_WRITE_ENABLE) != SUCCESS ||
+      qspi_write_bytes(QSPI_CCR_FMODE_WRITE | CCR_ADDR_1LINE | CMD_ERASE_4K, addr, NULL, 0) != SUCCESS) {
     return TIMEOUT;
   }
-  *id = value;
-  return SUCCESS;
+  return QspiWaitReady(timeout_ms);
+}
+
+int QspiProgram(uint32_t addr, const uint8_t *data, uint32_t len, uint32_t timeout_ms)
+{
+  if (len == 0U || (addr % PAGE_SIZE) + len > PAGE_SIZE) {
+    return FAILURE;
+  }
+  if (QspiCommand(CMD_WRITE_ENABLE) != SUCCESS ||
+      qspi_write_bytes(QSPI_CCR_FMODE_WRITE | CCR_ADDR_1LINE | CMD_PAGE_PROGRAM, addr, data, len) != SUCCESS) {
+    return TIMEOUT;
+  }
+  return QspiWaitReady(timeout_ms);
 }
 
 int QspiMemoryMappedQuadOut(uint8_t read_cmd, uint32_t dummy_cycles)
