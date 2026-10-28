@@ -18,9 +18,10 @@ written at register level: no HAL, no CMSIS, no CubeMX.
 | 04-lcd-backlight       | LCD panel and backlight power-up                               |
 | 05-lcd-init            | LTDC timings and background colour                             |
 | 06-lcd-layer           | RGB565 framebuffer on LTDC layer 1                             |
-| 07-lcd-logo            | Palette-indexed logo with alpha fade-in                        |
+| 07-lcd-logo            | Palette-indexed logo, frame drawn before the panel is lit      |
 | 08-custombootloader    | Bootloader running an application in place from QSPI flash     |
 | 09-securebootloader    | Same, starting the application only if its SHA-256 matches     |
+| 07-lcd-logo-xip        | 07-lcd-logo at 216 MHz, run in place from QSPI by the 08 bootloader |
 
 ## Shared code
 
@@ -46,6 +47,8 @@ The repository has two sides:
 ```sh
 make 01-blink            # build one application
 make 01-blink-flash      # build and flash it with the ST-LINK
+make 07-lcd-logo-xip-flash   # flash the logo to QSPI, then the 08 bootloader
+make reset                   # restart: one boot, one logo
 make documentation       # this documentation, in work/doc/html
 make BOARD=<name> ...    # build for another board folder
 ```
