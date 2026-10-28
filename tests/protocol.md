@@ -5,7 +5,7 @@
 \brief      HIL firmware-to-host protocol specification.
 
 \author     Z. BEN-AKKA
-\version    1.5
+\version    1.6
 \date       28/10/2026
 
 \details
@@ -23,6 +23,7 @@
 | 1.3     | 22/10/2026 | Z. BEN-AKKA | Add noise and RX overflow to BAD_FRAME; report line errors once at the terminator. |
 | 1.4     | 27/10/2026 | Z. BEN-AKKA | Specify LED_SET and LED_GET; protocol 1.1. |
 | 1.5     | 28/10/2026 | Z. BEN-AKKA | Specify QSPI_ID, QSPI_READ, QSPI_ERASE and QSPI_WRITE; protocol 1.2. |
+| 1.6     | 28/10/2026 | Z. BEN-AKKA | Limit QSPI data to 32 bytes: lines are 128 bytes at most. |
 ****************************
 -->
 
@@ -571,7 +572,7 @@ indirect mode [N4] [N5]. The following rules apply to the four commands.
 | Item | Rule |
 |:--|:--|
 | Address | `addr` is a byte offset in the flash, not an address of the memory-mapped region: `0x` followed by 1 to 8 hexadecimal digits. |
-| Data | `data` is a sequence of 2 to 128 hexadecimal digits, an even number of them, two per byte; the first byte is at the lowest address. |
+| Data | `data` is a sequence of 2 to 64 hexadecimal digits, an even number of them, two per byte; the first byte is at the lowest address. |
 | Digit case | The firmware SHALL accept hexadecimal digits in uppercase or lowercase, and SHALL send them in uppercase. The prefix is always a lowercase `0x`. |
 | Test area | The last 64 KB block of the flash, from `0x00FF0000` to `0x00FFFFFF`. The firmware SHALL reject any erase or write outside the test area; reads are allowed in the whole flash. |
 
@@ -611,7 +612,7 @@ END id=5
 
 | Item | Specification |
 |:--|:--|
-| Arguments | `addr` (required): first byte, as defined in section 6.6. `len` (required): number of bytes, unsigned decimal integer from 1 to 64. |
+| Arguments | `addr` (required): first byte, as defined in section 6.6. `len` (required): number of bytes, unsigned decimal integer from 1 to 32. |
 | Success result | `data=<2 × len hexadecimal digits>` |
 | Error codes | `INVALID_ARGUMENT` if an argument is missing, malformed or out of range, if `addr + len` exceeds `0x01000000`, or if any other argument is present. `DEVICE_TIMEOUT` if the flash does not answer. `BAD_REQUEST` as defined in section 5.2.1. |
 | Timeout | 2 s. |
@@ -663,7 +664,7 @@ END id=7
 
 | Item | Specification |
 |:--|:--|
-| Arguments | `addr` (required): first byte, as defined in section 6.6. `data` (required): 1 to 64 bytes, as defined in section 6.6. |
+| Arguments | `addr` (required): first byte, as defined in section 6.6. `data` (required): 1 to 32 bytes, as defined in section 6.6. |
 | Success result | No result field. |
 | Error codes | `INVALID_ARGUMENT` if an argument is missing or malformed, if the bytes are not all within the test area, if they cross a 256-byte page boundary, or if any other argument is present. `DEVICE_TIMEOUT` if the program does not end within the firmware's internal time limit. `BAD_REQUEST` as defined in section 5.2.1. |
 | Timeout | 2 s. |
