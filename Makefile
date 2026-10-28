@@ -5,8 +5,8 @@
 # \brief      Build, flash and document project images for a board.
 #
 # \author     Z. BEN-AKKA
-# \version    1.10
-# \date       26/10/2026
+# \version    1.11
+# \date       28/10/2026
 #
 # \details
 #   Says what to build: the applications, their sources, modules and
@@ -19,8 +19,8 @@
 #   only call. Applications and test images are declared as images; the rules
 #   for every image come from the IMAGE template. Both test images link the
 #   shared GPIO, UART and LED modules; hil-bench adds its protocol modules
-#   and headers. hil-bench also gets hil_build.h, the git revision it was
-#   built from, for its readiness banner.
+#   and headers, and the delay and QSPI modules. hil-bench also gets
+#   hil_build.h, the git revision it was built from, for its readiness banner.
 #     make 01-blink            build one application
 #     make 01-blink-flash      build and flash it with the ST-LINK
 #     make BOARD=<name> ...    build for another board folder
@@ -40,6 +40,7 @@
 # | 1.8     | 22/10/2026 | Z. BEN-AKKA | Generate the hil-bench build ID from the git revision.      |
 # | 1.9     | 23/10/2026 | Z. BEN-AKKA | Link the protocol modules into the hil-bench image.         |
 # | 1.10    | 26/10/2026 | Z. BEN-AKKA | Add the reset-sw target (software reset).                   |
+# | 1.11    | 28/10/2026 | Z. BEN-AKKA | Link the delay and QSPI modules into the hil-bench image.   |
 # ****************************
 # */
 
@@ -90,7 +91,7 @@ $(foreach a,$(SINGLE),$(eval $(a)_SRCS := $(APPS_DIR)/$(a)/main.c))
 HIL_BENCH := tests/firmware/hil_bench
 hil-bench_IMAGES  := hil-bench
 hil-bench_SRCS    := $(addprefix $(HIL_BENCH)/,main.c reset_cause.c line.c protocol.c dispatch.c commands.c)
-hil-bench_MODULES := gpio uart led
+hil-bench_MODULES := delay gpio led qspi uart
 hil-bench_CFLAGS  := -I$(HIL_BENCH)/inc -I$(BUILD)/hil-bench
 
 # UART driver diagnostic: raw echo and RX error markers (uart_rx_check.py T1-T8)
