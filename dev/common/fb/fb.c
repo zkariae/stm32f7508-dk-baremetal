@@ -5,8 +5,8 @@
 \brief      Drawing into an RGB565 framebuffer.
 
 \author     Z. BEN-AKKA
-\version    1.1
-\date       10/10/2026
+\version    1.2
+\date       29/10/2026
 
 \details
   API documented in fb.h.
@@ -16,6 +16,7 @@
 |:-------:|:----------:|:------------|:-----------------------------------------|
 | 1.0     | 10/10/2026 | Z. BEN-AKKA | Initial version.                         |
 | 1.1     | 10/10/2026 | Z. BEN-AKKA | Generic: the framebuffer is a parameter. |
+| 1.2     | 29/10/2026 | Z. BEN-AKKA | FbGradient of one row: no division by 0. |
 ****************************
 */
 
@@ -65,8 +66,10 @@ void FbCircle(const Framebuffer *fb, int32_t cx, int32_t cy, int32_t r, uint16_t
 void FbGradient(const Framebuffer *fb, uint8_t r1, uint8_t g1, uint8_t b1, uint8_t r2, uint8_t g2,
                 uint8_t b2)
 {
+  const uint32_t span = (fb->height > 1U) ? fb->height - 1U : 1U; // one row: top colour
+
   for (uint32_t y = 0; y < fb->height; y++) {
-    uint32_t t = y * 255U / (fb->height - 1U);
+    uint32_t t = y * 255U / span;
     uint8_t r = (uint8_t)((r1 * (255U - t) + r2 * t) / 255U);
     uint8_t g = (uint8_t)((g1 * (255U - t) + g2 * t) / 255U);
     uint8_t b = (uint8_t)((b1 * (255U - t) + b2 * t) / 255U);
