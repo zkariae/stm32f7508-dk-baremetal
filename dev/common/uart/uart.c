@@ -5,8 +5,8 @@
 \brief      USART transmit and interrupt-driven receive driver, 8N1.
 
 \author     Z. BEN-AKKA
-\version    1.4
-\date       16/10/2026
+\version    1.5
+\date       29/10/2026
 
 \details
   API documented in uart.h.
@@ -19,6 +19,7 @@
 | 1.2     | 11/10/2026 | Z. BEN-AKKA | Board instances defined by the applications. |
 | 1.3     | 11/10/2026 | Z. BEN-AKKA | Registers from the board's mcu.h.            |
 | 1.4     | 16/10/2026 | Z. BEN-AKKA | Add non-blocking interrupt-driven RX queue.  |
+| 1.5     | 29/10/2026 | Z. BEN-AKKA | Formatted with clang-format.                 |
 ****************************
 */
 
@@ -29,7 +30,7 @@
 #include "mcu.h"
 #include "gpio/gpio.h"
 
-#define UART_RX_BUFFER_MASK (UART_RX_BUFFER_SIZE - 1u)
+#define UART_RX_BUFFER_MASK  (UART_RX_BUFFER_SIZE - 1u)
 #define UART_RX_IRQ_PRIORITY 5u
 
 _Static_assert((UART_RX_BUFFER_SIZE & UART_RX_BUFFER_MASK) == 0u,

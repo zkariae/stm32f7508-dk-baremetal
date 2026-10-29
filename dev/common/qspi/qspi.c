@@ -5,8 +5,8 @@
 \brief      QUADSPI driver for a single serial NOR flash.
 
 \author     Z. BEN-AKKA
-\version    1.6
-\date       28/10/2026
+\version    1.7
+\date       29/10/2026
 
 \details
   API documented in qspi.h.
@@ -21,6 +21,7 @@
 | 1.4     | 27/10/2026 | Z. BEN-AKKA | Bound the TCF, FTF and ABORT waits.          |
 | 1.5     | 28/10/2026 | Z. BEN-AKKA | Status, read, 4 KB erase and page program.   |
 | 1.6     | 28/10/2026 | Z. BEN-AKKA | NCS high 6 cycles, half-cycle sample shift.  |
+| 1.7     | 29/10/2026 | Z. BEN-AKKA | Formatted with clang-format.                 |
 ****************************
 */
 
@@ -34,14 +35,14 @@
 #include "delay/delay.h"
 
 // JEDEC standard instructions
-#define CMD_RESET_ENABLE  0x66
-#define CMD_RESET_MEMORY  0x99
-#define CMD_READ_ID       0x9F
-#define CMD_READ_STATUS   0x05
-#define CMD_WRITE_ENABLE  0x06
-#define CMD_READ          0x03
-#define CMD_PAGE_PROGRAM  0x02
-#define CMD_ERASE_4K      0x20
+#define CMD_RESET_ENABLE 0x66
+#define CMD_RESET_MEMORY 0x99
+#define CMD_READ_ID      0x9F
+#define CMD_READ_STATUS  0x05
+#define CMD_WRITE_ENABLE 0x06
+#define CMD_READ         0x03
+#define CMD_PAGE_PROGRAM 0x02
+#define CMD_ERASE_4K     0x20
 
 #define STATUS_WIP    (1U << 0) ///< Status register: write in progress.
 #define PAGE_SIZE     256U      ///< Bytes of one program page.
@@ -174,7 +175,8 @@ void QspiInit(uint32_t size_log2, uint32_t prescaler)
   RCC_AHB3ENR |= RCC_AHB3ENR_QSPIEN;
   (void)RCC_AHB3ENR;
 
-  QSPI_DCR = QSPI_DCR_FSIZE(size_log2 - 1U) | QSPI_DCR_CSHT(5); // NCS high 6 cycles: 55 ns at 108 MHz, tSHSL 50 ns
+  // NCS high 6 cycles: 55 ns at 108 MHz, tSHSL 50 ns
+  QSPI_DCR = QSPI_DCR_FSIZE(size_log2 - 1U) | QSPI_DCR_CSHT(5);
   QSPI_CR = QSPI_CR_PRESCALER(prescaler) | QSPI_CR_SSHIFT | QSPI_CR_EN; // Sample half a cycle later
 }
 
@@ -215,8 +217,8 @@ int QspiReadJedecId(uint32_t *id)
 
 int QspiReadStatus(uint8_t *status)
 {
-  return qspi_read_bytes(QSPI_CCR_FMODE_READ | QSPI_CCR_DMODE(1) | QSPI_CCR_IMODE(1) | CMD_READ_STATUS,
-                         0, status, 1);
+  return qspi_read_bytes(
+      QSPI_CCR_FMODE_READ | QSPI_CCR_DMODE(1) | QSPI_CCR_IMODE(1) | CMD_READ_STATUS, 0, status, 1);
 }
 
 int QspiWaitReady(uint32_t timeout_ms)
@@ -252,7 +254,8 @@ int QspiErase4K(uint32_t addr, uint32_t timeout_ms)
     return FAILURE;
   }
   if (QspiCommand(CMD_WRITE_ENABLE) != SUCCESS ||
-      qspi_write_bytes(QSPI_CCR_FMODE_WRITE | CCR_ADDR_1LINE | CMD_ERASE_4K, addr, NULL, 0) != SUCCESS) {
+      qspi_write_bytes(QSPI_CCR_FMODE_WRITE | CCR_ADDR_1LINE | CMD_ERASE_4K, addr, NULL, 0) !=
+          SUCCESS) {
     return TIMEOUT;
   }
   return QspiWaitReady(timeout_ms);
@@ -264,7 +267,8 @@ int QspiProgram(uint32_t addr, const uint8_t *data, uint32_t len, uint32_t timeo
     return FAILURE;
   }
   if (QspiCommand(CMD_WRITE_ENABLE) != SUCCESS ||
-      qspi_write_bytes(QSPI_CCR_FMODE_WRITE | CCR_ADDR_1LINE | CMD_PAGE_PROGRAM, addr, data, len) != SUCCESS) {
+      qspi_write_bytes(QSPI_CCR_FMODE_WRITE | CCR_ADDR_1LINE | CMD_PAGE_PROGRAM, addr, data, len) !=
+          SUCCESS) {
     return TIMEOUT;
   }
   return QspiWaitReady(timeout_ms);
