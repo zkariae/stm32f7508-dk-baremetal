@@ -5,12 +5,12 @@
 \brief      HIL firmware-to-host protocol specification.
 
 \author     Z. BEN-AKKA
-\version    1.8
-\date       28/10/2026
+\version    1.9
+\date       29/10/2026
 
 \details
   Specifies the HIL host-firmware serial interface, including record syntax,
-  version compatibility, HELLO, CAPS, LED and QSPI commands, reset reporting, error handling,
+  version compatibility, HELLO, CAPS, LED, QSPI, GPIO and LCD commands, reset reporting, error handling,
   transaction timeouts, and session recovery. The document revision is
   independent of the wire protocol and firmware versions.
 
@@ -26,6 +26,7 @@
 | 1.6     | 28/10/2026 | Z. BEN-AKKA | Limit QSPI data to 32 bytes: lines are 128 bytes at most. |
 | 1.7     | 28/10/2026 | Z. BEN-AKKA | QSPI_ID result field jedec_id: id is a reserved key. |
 | 1.8     | 28/10/2026 | Z. BEN-AKKA | QSPI: page rule and test area layout (section 6.6). |
+| 1.9     | 29/10/2026 | Z. BEN-AKKA | Specify GPIO_CONFIG and the LCD commands; protocol 1.3. |
 ****************************
 -->
 
@@ -44,9 +45,11 @@ the STM32F7508-DK HIL bench firmware. It specifies:
 - timeouts and recovery.
 
 
-The command set of protocol 1.2 contains `HELLO`, `CAPS`, `LED_SET`,
-`LED_GET`, `QSPI_ID`, `QSPI_READ`, `QSPI_ERASE` and `QSPI_WRITE`. Additional commands
-SHALL be specified in section 6 before either endpoint implements them.
+The command set of protocol 1.3 contains `HELLO`, `CAPS`, `LED_SET`,
+`LED_GET`, `QSPI_ID`, `QSPI_READ`, `QSPI_ERASE`, `QSPI_WRITE`, `GPIO_CONFIG`,
+`LCD_INIT`, `LCD_CLOCK`, `LCD_TIMING`, `LCD_LAYER`, `LCD_SCAN`, `LCD_FILL` and
+`LCD_PIXEL`. Additional commands SHALL be specified in section 6 before either
+endpoint implements them.
 
 ### 1.1 Conventions
 
@@ -150,7 +153,7 @@ This document uses three independent version identifiers:
 | Protocol version | `proto` field of the readiness banner | Identifies the wire protocol implemented by the firmware. |
 | Firmware version | `fw` field of the readiness banner | Identifies the firmware image. |
 
-This revision of the document specifies protocol version **1.2**. A document
+This revision of the document specifies protocol version **1.3**. A document
 revision MAY change without changing the protocol version, for example to
 clarify wording.
 
@@ -494,7 +497,8 @@ Host requirements:
   duplicate name, a final count of names different from `total`, or a list
   without `HELLO` or `CAPS`.
 
-Example (informative), with a single page:
+Example (informative), with a single page, for a firmware with the eight
+commands of protocol 1.2:
 
 ```text
 CMD id=2 command=CAPS
@@ -502,14 +506,15 @@ RESULT id=2 status=OK total=8 start=0 names=HELLO,CAPS,LED_SET,LED_GET,QSPI_ID,Q
 END id=2
 ```
 
-Example (informative), with two pages:
+Example (informative), with two pages, for the sixteen commands of protocol
+1.3:
 
 ```text
 CMD id=2 command=CAPS
-RESULT id=2 status=OK total=12 start=0 names=HELLO,CAPS,QSPI_ID,SDRAM_TEST next=4
+RESULT id=2 status=OK total=16 start=0 names=HELLO,CAPS,LED_SET,LED_GET,QSPI_ID,QSPI_READ,QSPI_ERASE,QSPI_WRITE next=8
 END id=2
-CMD id=3 command=CAPS start=4
-RESULT id=3 status=OK total=12 start=4 names=...
+CMD id=3 command=CAPS start=8
+RESULT id=3 status=OK total=16 start=8 names=GPIO_CONFIG,LCD_INIT,LCD_CLOCK,LCD_TIMING,LCD_LAYER,LCD_SCAN,LCD_FILL,LCD_PIXEL
 END id=3
 ```
 
@@ -719,10 +724,283 @@ RESULT id=8 status=OK
 END id=8
 ```
 
-### 6.11 Future commands (informative)
+### 6.11 `GPIO_CONFIG`
+
+`GPIO_CONFIG` reports the configuration and the input level of one GPIO pin,
+without changing it [N4]. The host compares the result with the pin
+assignment of the datasheet [N6], not with a table of the firmware.
+
+| Item | Specification |
+|:--|:--|
+| Arguments | `port` (required): one uppercase letter from `A` to `K`. `pin` (required): unsigned decimal integer from 0 to 15, without leading zeros. |
+| Success result | `mode=<input\|output\|af\|analog> af=<0..15> level=<0\|1>` |
+| Error codes | `INVALID_ARGUMENT` if an argument is missing, malformed or out of range, or if any other argument is present. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | The clock of the port is enabled if it was not. The configuration and the output of the pin are unchanged. |
+
+Result fields:
+
+| Field | Value |
+|:--|:--|
+| `mode` | Pin mode, from `GPIOx_MODER`: `input`, `output`, `af` (alternate function) or `analog`. |
+| `af` | Alternate function number, from `GPIOx_AFRL` or `GPIOx_AFRH`, unsigned decimal integer. Reported in every mode. |
+| `level` | Pin level, from `GPIOx_IDR`: `1` if high, `0` if low. |
+
+`GPIO_CONFIG` MAY be sent at any time in a session; it does not require
+`LCD_INIT`.
+
+Example (informative), pin PG12 (LTDC_B4) after `LCD_INIT`:
+
+```text
+CMD id=9 command=GPIO_CONFIG port=G pin=12
+RESULT id=9 status=OK mode=af af=9 level=0
+END id=9
+```
+
+### 6.12 LCD commands
+
+`LCD_INIT`, `LCD_CLOCK`, `LCD_TIMING`, `LCD_LAYER`, `LCD_SCAN`, `LCD_FILL`
+and `LCD_PIXEL` drive and check the 480 × 272 RK043FN48H panel of the board
+through the LTDC [N4] [I7] [I8]. The following rules apply to the seven
+commands.
+
+| Item | Rule |
+|:--|:--|
+| Prerequisite | Until `LCD_INIT` has succeeded in the current session, every LCD command except `LCD_INIT` SHALL return `status=ERR code=BUSY` and SHALL NOT change any state. |
+| Colour | RGB565: red in bits 15:11, green in bits 10:5, blue in bits 4:0. A `color` argument is `0x` followed by 1 to 4 hexadecimal digits, at most `0xFFFF`; a `color` result is `0x` followed by exactly 4 digits. Digit case follows section 6.6. |
+| Framebuffer | 480 × 272 RGB565 pixels, 261120 bytes, row by row from the top-left pixel: pixel (x, y) is the 16-bit word at `fb_addr + 2 × (y × 480 + x)`. It SHALL start at `0x20010000`, the first address of the 256 KB SRAM. |
+| Content | The content of the framebuffer is undefined until `LCD_INIT` has succeeded. |
+
+Firmware requirements:
+
+- Before the readiness banner, the firmware SHALL run the core at 216 MHz
+  from the 25 MHz HSE through the main PLL, and the QUADSPI at HCLK / 2.
+- If the HSE does not start, the firmware SHALL keep the core on HSI, still
+  send the readiness banner, and return `status=ERR code=DEVICE_ERROR` to
+  every `LCD_INIT`.
+- The data cache SHALL be disabled, so that the LTDC and `LCD_PIXEL` read the
+  values written by the CPU.
+
+> **Note (informative):** The LCD commands check the LTDC registers, the
+> pixel clock, the scan and the framebuffer memory. They do not check the
+> light emitted by the panel, its colours, or the signals on the board
+> traces: an operator or an optical sensor is needed for that. If the data
+> cache is enabled in a later firmware, the framebuffer must be cleaned
+> after each write and invalidated before each read.
+
+### 6.13 `LCD_INIT`
+
+`LCD_INIT` brings up the panel with a black frame.
+
+| Item | Specification |
+|:--|:--|
+| Arguments | None. |
+| Success result | No result field. |
+| Error codes | `INVALID_ARGUMENT` if any argument is present. `DEVICE_ERROR` if the core does not run from the HSE (section 6.12). `DEVICE_TIMEOUT` if the PLLSAI does not lock within the firmware's internal time limit. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | PLLSAI running with a 9 MHz pixel clock; the 28 LCD data and control pins in alternate function mode; LTDC enabled with a black background; every framebuffer pixel `0x0000`; layer 1 enabled on the framebuffer; panel enable (LCD_DISP, PI12) and backlight (LCD_BL_CTRL, PK3) driven high. |
+
+Firmware requirements:
+
+- The firmware SHALL perform the steps in this order: pixel clock, pins,
+  LTDC timings and background, framebuffer cleared, layer 1 enabled, then
+  panel enable and backlight. The undriven panel shows white, so the first
+  image shown is the black frame.
+- `LCD_INIT` MAY be sent again in the same session. It then performs the
+  same steps and clears the framebuffer again. A PLLSAI already running at
+  9 MHz SHALL be kept running.
+
+Example (informative):
+
+```text
+CMD id=10 command=LCD_INIT
+RESULT id=10 status=OK
+END id=10
+```
+
+### 6.14 `LCD_CLOCK`
+
+`LCD_CLOCK` reports the state of the PLLSAI and the pixel clock computed from
+the RCC registers [N4].
+
+| Item | Specification |
+|:--|:--|
+| Arguments | None. |
+| Success result | `pllsai=<locked\|off> pixel_hz=<n>` |
+| Error codes | `BUSY` before `LCD_INIT` (section 6.12). `INVALID_ARGUMENT` if any argument is present. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | None. |
+
+Result fields:
+
+| Field | Value |
+|:--|:--|
+| `pllsai` | `locked` if `PLLSAIRDY` is set in `RCC_CR`, `off` otherwise. |
+| `pixel_hz` | Unsigned decimal integer: the PLL input clock (25000000 if `RCC_PLLCFGR` selects the HSE, 16000000 for HSI) / `PLLM` × `PLLSAIN` / `PLLSAIR` / the `PLLSAIDIVR` divider of `RCC_DCKCFGR1`, rounded down. For the board: `9000000`. |
+
+Example (informative):
+
+```text
+CMD id=11 command=LCD_CLOCK
+RESULT id=11 status=OK pllsai=locked pixel_hz=9000000
+END id=11
+```
+
+### 6.15 `LCD_TIMING`
+
+`LCD_TIMING` reports the panel timings decoded from the LTDC registers
+`LTDC_SSCR`, `LTDC_BPCR`, `LTDC_AWCR` and `LTDC_TWCR` [N4].
+
+| Item | Specification |
+|:--|:--|
+| Arguments | None. |
+| Success result | `hsw=<n> hbp=<n> width=<n> hfp=<n> vsw=<n> vbp=<n> height=<n> vfp=<n>` |
+| Error codes | `BUSY` before `LCD_INIT` (section 6.12). `INVALID_ARGUMENT` if any argument is present. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | None. |
+
+Result fields, unsigned decimal integers in pixel clocks (horizontal) or
+lines (vertical):
+
+| Field | Value |
+|:--|:--|
+| `hsw`, `vsw` | Synchronization width: `HSW` + 1, `VSH` + 1 (`LTDC_SSCR`). |
+| `hbp`, `vbp` | Back porch: `AHBP` − `HSW`, `AVBP` − `VSH` (`LTDC_BPCR`). |
+| `width`, `height` | Active area: `AAW` − `AHBP`, `AAH` − `AVBP` (`LTDC_AWCR`). |
+| `hfp`, `vfp` | Front porch: `TOTALW` − `AAW`, `TOTALH` − `AAH` (`LTDC_TWCR`). |
+
+For the board, the total frame is 531 × 288 pixel clocks and lines, that is
+58.85 frames per second at 9 MHz.
+
+Example (informative):
+
+```text
+CMD id=12 command=LCD_TIMING
+RESULT id=12 status=OK hsw=1 hbp=42 width=480 hfp=8 vsw=10 vbp=2 height=272 vfp=4
+END id=12
+```
+
+### 6.16 `LCD_LAYER`
+
+`LCD_LAYER` reports the configuration of LTDC layer 1 [N4].
+
+| Item | Specification |
+|:--|:--|
+| Arguments | None. |
+| Success result | `enabled=<0\|1> format=<format> fb_addr=0x<8 hexadecimal digits> x=<n> y=<n> width=<n> height=<n>` |
+| Error codes | `BUSY` before `LCD_INIT` (section 6.12). `INVALID_ARGUMENT` if any argument is present. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | None. |
+
+Result fields:
+
+| Field | Value |
+|:--|:--|
+| `enabled` | `1` if `LEN` is set in `LTDC_L1CR`, `0` otherwise. |
+| `format` | Pixel format, from `LTDC_L1PFCR`: `argb8888`, `rgb888`, `rgb565`, `argb1555`, `argb4444`, `l8`, `al44` or `al88`. |
+| `fb_addr` | Framebuffer address, from `LTDC_L1CFBAR`, in uppercase hexadecimal. |
+| `x`, `y` | Top-left corner of the layer window in the active area, unsigned decimal integers: `WHSTPOS` − `AHBP` − 1, `WVSTPOS` − `AVBP` − 1. |
+| `width`, `height` | Size of the layer window, unsigned decimal integers: `WHSPPOS` − `WHSTPOS` + 1, `WVSPPOS` − `WVSTPOS` + 1. |
+
+Example (informative):
+
+```text
+CMD id=13 command=LCD_LAYER
+RESULT id=13 status=OK enabled=1 format=rgb565 fb_addr=0x20010000 x=0 y=0 width=480 height=272
+END id=13
+```
+
+### 6.17 `LCD_SCAN`
+
+`LCD_SCAN` observes the LTDC scan during a time window: it counts the frames
+from the current position register `LTDC_CPSR`, and reports a FIFO underrun
+flagged in `LTDC_ISR` [N4].
+
+| Item | Specification |
+|:--|:--|
+| Arguments | `ms` (required): length of the window in milliseconds, unsigned decimal integer from 100 to 1000. |
+| Success result | `frames=<n> underrun=<0\|1>` |
+| Error codes | `BUSY` before `LCD_INIT` (section 6.12). `INVALID_ARGUMENT` if `ms` is missing, malformed or out of range, or if any other argument is present. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | The FIFO underrun flag `FUIF` is cleared at the start of the window. |
+
+Result fields:
+
+| Field | Value |
+|:--|:--|
+| `frames` | Number of frame starts seen during the window, unsigned decimal integer: the times the line position `CYPOS` read from `LTDC_CPSR` is lower than the previous value read. `0` if the scan is stopped. |
+| `underrun` | `1` if `FUIF` is set in `LTDC_ISR` at the end of the window, `0` otherwise. |
+
+Firmware requirements:
+
+- The firmware SHALL read `LTDC_CPSR` at least once per millisecond during
+  the whole window, so that no frame start is missed (a frame lasts 17 ms for
+  the board), and SHALL measure the window with its 1 ms time base.
+
+Host requirements:
+
+- The host SHALL accept a `frames` value within 1 of `pixel_hz` × `ms` /
+  (1000 × total width × total height), where the total width and height are
+  the sums of the `LCD_TIMING` fields. For the board and `ms=1000`: 58 or 59.
+
+Example (informative):
+
+```text
+CMD id=14 command=LCD_SCAN ms=1000
+RESULT id=14 status=OK frames=59 underrun=0
+END id=14
+```
+
+### 6.18 `LCD_FILL`
+
+`LCD_FILL` sets every pixel of the framebuffer to one colour.
+
+| Item | Specification |
+|:--|:--|
+| Arguments | `color` (required): RGB565 colour, as defined in section 6.12. |
+| Success result | No result field. |
+| Error codes | `BUSY` before `LCD_INIT` (section 6.12). `INVALID_ARGUMENT` if `color` is missing, malformed or above `0xFFFF`, or if any other argument is present. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | The 130560 pixels of the framebuffer take the colour, which the panel shows from the next frame. |
+
+Example (informative), red:
+
+```text
+CMD id=15 command=LCD_FILL color=0xF800
+RESULT id=15 status=OK
+END id=15
+```
+
+### 6.19 `LCD_PIXEL`
+
+`LCD_PIXEL` reads one pixel of the framebuffer.
+
+| Item | Specification |
+|:--|:--|
+| Arguments | `x` (required): column, unsigned decimal integer from 0 to 479. `y` (required): row, unsigned decimal integer from 0 to 271. Both without leading zeros. |
+| Success result | `color=0x<4 hexadecimal digits>` |
+| Error codes | `BUSY` before `LCD_INIT` (section 6.12). `INVALID_ARGUMENT` if an argument is missing, malformed or out of range, or if any other argument is present. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | None. |
+
+Result fields:
+
+| Field | Value |
+|:--|:--|
+| `color` | The RGB565 value of pixel (x, y) in the framebuffer (section 6.12), in uppercase hexadecimal. |
+
+Example (informative):
+
+```text
+CMD id=16 command=LCD_PIXEL x=479 y=271
+RESULT id=16 status=OK color=0xF800
+END id=16
+```
+
+### 6.20 Future commands (informative)
 
 The following example shows how a future peripheral command would use the
-same envelope. `SDRAM_TEST` is not part of protocol version 1.2 and SHALL
+same envelope. `SDRAM_TEST` is not part of protocol version 1.3 and SHALL
 NOT be implemented until it is specified according to section 6.1.
 
 ```text
@@ -730,6 +1008,18 @@ CMD id=2 command=CAPS
 RESULT id=2 status=OK total=2 start=0 names=HELLO,CAPS
 END id=2
 ```
+
+LCD features that do not fit in the 64 KB internal flash could use one of
+these designs, to be specified in this section before implementation:
+
+- Images and fonts stored in the QSPI flash, outside the test area, and
+  loaded by the programmer before the session. The firmware still runs from
+  the internal flash, so it may switch the QUADSPI between indirect mode and
+  memory-mapped mode to copy them into the framebuffer.
+- A second firmware variant executed in place from the QSPI flash behind a
+  bootloader. It cannot use the QUADSPI in indirect mode while it executes
+  from the flash, so it would not report the QSPI commands in `CAPS`; the
+  host finds the supported commands as defined in section 3.4.
 
 
 ## 7. Error codes
@@ -874,8 +1164,9 @@ a reference is dated, only the cited edition applies.
 | [N1] | IETF, *Key words for use in RFCs to Indicate Requirement Levels*, RFC 2119 (BCP 14), March 1997. <https://www.rfc-editor.org/rfc/rfc2119> | Meaning of SHALL, SHOULD, MAY (section 1.1). |
 | [N2] | IETF, *Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words*, RFC 8174 (BCP 14), May 2017. <https://www.rfc-editor.org/rfc/rfc8174> | Key words apply only in uppercase (section 1.1). |
 | [N3] | ANSI, *Coded Character Set – 7-Bit American Standard Code for Information Interchange*, ANSI X3.4-1986 (equivalent: ISO/IEC 646, International Reference Version). | Character set and byte values of records (section 2.2). |
-| [N4] | STMicroelectronics, *RM0385 Reference manual – STM32F75xxx and STM32F74xxx advanced Arm®-based 32-bit MCUs*, Rev. <x>. <https://www.st.com/resource/en/reference_manual/rm0385-stm32f75xxx-and-stm32f74xxx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf> | USART framing and error flags (FE, ORE) (section 2.4); reset flags of `RCC_CSR` and clearing with `RMVF` (banner `reset` field); GPIO input data register (sections 6.4 and 6.5); QUADSPI indirect mode (sections 6.6 to 6.10). |
+| [N4] | STMicroelectronics, *RM0385 Reference manual – STM32F75xxx and STM32F74xxx advanced Arm®-based 32-bit MCUs*, Rev. <x>. <https://www.st.com/resource/en/reference_manual/rm0385-stm32f75xxx-and-stm32f74xxx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf> | USART framing and error flags (FE, ORE) (section 2.4); reset flags of `RCC_CSR` and clearing with `RMVF` (banner `reset` field); GPIO input data register (sections 6.4 and 6.5); QUADSPI indirect mode (sections 6.6 to 6.10); GPIO mode, alternate function and input data registers (section 6.11); PLLSAI and LTDC clock (section 6.14); LTDC timing, layer, position and interrupt registers (sections 6.12 to 6.17). |
 | [N5] | Micron, *N25Q128A 128Mb 3V multiple I/O serial flash memory* datasheet. <https://www.micron.com/products/storage/nor-flash/serial-nor> | Instructions, JEDEC identifier, 256-byte page, 4 KB erase block, and maximum erase and program times (sections 6.6 to 6.10). |
+| [N6] | STMicroelectronics, *STM32F750x8 datasheet*, alternate function mapping table. <https://www.st.com/resource/en/datasheet/stm32f750n8.pdf> | Expected alternate function of each LCD pin, checked with `GPIO_CONFIG` (section 6.11). |
 
 ### 9.2 Informative references
 
@@ -890,7 +1181,8 @@ required to implement this specification.
 | [I4] | JEDEC, *JEP106 – Standard Manufacturer's Identification Code*, latest revision. <https://www.jedec.org/standards-documents/docs/jep-106ab> | Manufacturer byte of the JEDEC identifier (section 6.7). |
 | [I5] | JEDEC, *JESD216 – Serial Flash Discoverable Parameters (SFDP)*, latest revision. <https://www.jedec.org/standards-documents/docs/jesd216b> | Identification of serial flash devices for future QSPI commands. |
 | [I6] | ISO/IEC/IEEE 29119-3, *Software and systems engineering – Software testing – Part 3: Test documentation*. | Structure of test reports (section 8.4). |
-| [I7] | STMicroelectronics, *STM32F7508-DK* product page and user manual. <https://www.st.com/en/evaluation-tools/stm32f7508-dk.html> | Board wiring of USART1 to the ST-LINK virtual COM port, of the user LED LD1 to PI1 (sections 6.4 and 6.5), and of the N25Q128A flash to the QUADSPI (section 6.6). |
+| [I7] | STMicroelectronics, *STM32F7508-DK* product page and user manual. <https://www.st.com/en/evaluation-tools/stm32f7508-dk.html> | Board wiring of USART1 to the ST-LINK virtual COM port, of the user LED LD1 to PI1 (sections 6.4 and 6.5), and of the N25Q128A flash to the QUADSPI (section 6.6); wiring of the RK043FN48H panel to the LTDC, LCD_DISP on PI12 and LCD_BL_CTRL on PK3 (sections 6.12 and 6.13). |
+| [I8] | Rocktech, *RK043FN48H 4.3-inch TFT LCD module* datasheet. | Panel timings: synchronization widths, porches and pixel clock (sections 6.13 to 6.15). |
 
 ### 9.3 Related open-source projects (informative)
 
