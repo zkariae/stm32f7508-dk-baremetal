@@ -5,14 +5,15 @@
 \brief      Display an RGB565 framebuffer through LTDC layer 1.
 
 \author     Z. BEN-AKKA
-\version    1.6
+\version    1.7
 \date       29/10/2026
 
 \details
-  1) Brings up the LTDC as in 05-lcd-init.
+  1) Brings up the LTDC as in 05-lcd-init, with a black background.
   2) Clears the RGB565 framebuffer in the .framebuffer section (SRAM) with
-     common/fb, and enables layer 1.
-  3) Draws colour bars and a grey ramp.
+     common/fb, and draws colour bars and a grey ramp.
+  3) Only then enables layer 1, and last powers the panel and its backlight:
+     the undriven panel is white, so the first image shown is complete.
   4) Animates a square and reports LTDC FIFO underruns over USART1.
 
 \section lcd_layer_main_c_version_history Version history
@@ -25,6 +26,7 @@
 | 1.4     | 11/10/2026 | Z. BEN-AKKA | Board wiring defined in the application.            |
 | 1.5     | 11/10/2026 | Z. BEN-AKKA | Board wiring from stm32f7508-dk/.                   |
 | 1.6     | 29/10/2026 | Z. BEN-AKKA | Framebuffer placed by the linker in .framebuffer.   |
+| 1.7     | 29/10/2026 | Z. BEN-AKKA | Panel lit once the frame is drawn: no white flash.  |
 ****************************
 */
 
@@ -124,16 +126,16 @@ int main(void)
 
   RccInitPixelClock9MHz();
   BoardLcdPinsInit();
-  BoardLcdPowerOn();
-  LtdcInit(&BOARD_LCD_TIMING, 0x00000000U); // black behind the layer
+  LtdcInit(&BOARD_LCD_TIMING, 0x00000000U); // Black background until layer 1 is on
 
-  // Clear before enabling the layer: SRAM1 is random at reset
+  // The whole frame is drawn before layer 1 shows it: SRAM is random at reset
   FbClear(&screen, Rgb565(0, 0, 0));
-
-  LtdcLayer1InitRgb565(&BOARD_LCD_TIMING, (uint32_t)fb_pixels);
-  UartPuts(console, "layer 1 enabled, RGB565\n\n");
-
   draw_test_pattern();
+  LtdcLayer1InitRgb565(&BOARD_LCD_TIMING, (uint32_t)fb_pixels);
+
+  // Panel and backlight last: the undriven panel is white, it must get the frame at once
+  BoardLcdPowerOn();
+  UartPuts(console, "layer 1 enabled, RGB565\n\n");
   UartPuts(console, "colour bars and grey ramp\n");
 
   // Square bouncing horizontally, redrawn every 40 ms
