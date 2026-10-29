@@ -5,12 +5,13 @@
 \brief      Bootloader that only starts the application it was built for.
 
 \author     Z. BEN-AKKA
-\version    1.5
-\date       11/10/2026
+\version    1.6
+\date       29/10/2026
 
 \details
   Same flow as 08-custombootloader, plus a SHA-256 check (sha256.c):
-  1) Resets the N25Q128A, checks its ID and maps it at 0x90000000.
+  1) Resets the N25Q128A, checks its ID and maps it at 0x90000000 at
+     HCLK / 2, so the application may raise HCLK up to 216 MHz.
   2) Checks the application's initial SP and PC.
   3) Hashes APP_IMAGE_SIZE bytes of the QSPI image and compares the digest
      with app_image_sha256, generated at build time by tools/fwhash.py.
@@ -34,6 +35,7 @@
 | 1.3     | 10/10/2026 | Z. BEN-AKKA | Generic drivers, board specifics from common/board. |
 | 1.4     | 11/10/2026 | Z. BEN-AKKA | Board wiring defined in the application.            |
 | 1.5     | 11/10/2026 | Z. BEN-AKKA | Board wiring from stm32f7508-dk/.                   |
+| 1.6     | 29/10/2026 | Z. BEN-AKKA | QUADSPI at HCLK / 2: app may run at 216 MHz.        |
 ****************************
 */
 
@@ -195,6 +197,8 @@ static void read_app_vector(uint32_t *sp, uint32_t *pc)
 \details
   The application inherits the memory-mapped QUADSPI and its pins (it must
   not reconfigure them), USART1 on PA9, the I-cache, and VTOR on its table.
+  It may change HCLK but not the QUADSPI prescaler: writing QUADSPI_CR
+  while running in place would stop the code fetches.
 
 \param  sp  Initial stack pointer.
 \param  pc  Reset handler address.
@@ -217,7 +221,7 @@ int main(void)
   UartPuts(console, "\nboot: 09-securebootloader\n");
 
   BoardQspiPinsInit();
-  QspiInit(N25Q128A_SIZE_LOG2, 0); // HCLK / 1
+  QspiInit(N25Q128A_SIZE_LOG2, 1); // HCLK / 2: 8 MHz on HSI, 108 MHz with the app at 216 MHz
   if (QspiSoftwareReset() != SUCCESS) {
     fail("QSPI stuck busy", LED_STEADY);
   }
