@@ -5,12 +5,12 @@
 \brief      Drive the LCD panel from the LTDC with a solid background colour.
 
 \author     Z. BEN-AKKA
-\version    1.5
-\date       11/10/2026
+\version    1.6
+\date       29/10/2026
 
 \details
   1) Runs the core at 216 MHz and the PLLSAI at a 9 MHz pixel clock.
-  2) Sets the 28 LTDC pins to AF14 and powers the panel.
+  2) Sets the 28 LTDC pins to AF14 (PG12: AF9) and powers the panel.
   3) Programs the RK043FN48H timings; no layer, no framebuffer.
   4) Cycles the background colour (red, green, blue, white) and logs the
      LTDC registers over USART1.
@@ -24,6 +24,7 @@
 | 1.3     | 10/10/2026 | Z. BEN-AKKA | Generic drivers, board specifics from common/board. |
 | 1.4     | 11/10/2026 | Z. BEN-AKKA | Board wiring defined in the application.            |
 | 1.5     | 11/10/2026 | Z. BEN-AKKA | Board wiring from stm32f7508-dk/.                   |
+| 1.6     | 29/10/2026 | Z. BEN-AKKA | PG12 on AF9 in the message and the details.         |
 ****************************
 */
 
@@ -106,7 +107,7 @@ int main(void)
   UartPuts(console, "PLLSAI locked, pixel clock 9 MHz\n");
 
   BoardLcdPinsInit();
-  UartPuts(console, "28 pins set to AF14\n");
+  UartPuts(console, "28 pins set to AF14 (PG12: AF9)\n");
 
   BoardLcdPowerOn();
   UartPuts(console, "panel and backlight on\n");
