@@ -5,14 +5,16 @@
 \brief      Entry point of the HIL protocol firmware.
 
 \author     Z. BEN-AKKA
-\version    1.3
-\date       28/10/2026
+\version    1.4
+\date       29/10/2026
 
 \details
   Firmware of the hil-bench image, which implements tests/protocol.md.
-  At boot it saves the reset cause first (section 4.2), starts USART1 at
-  115200 baud, turns LD1 off (section 6.4), starts the 1 ms SysTick, resets
-  the QSPI flash and sends one READY banner (section 4.1). Bytes received
+  At boot it saves the reset cause first (section 4.2), runs the core at
+  216 MHz from the HSE, or stays on HSI if the HSE does not start (section
+  6.12), starts USART1 at 115200 baud, turns LD1 off (section 6.4), starts
+  the 1 ms SysTick, resets the QSPI flash, clocked at HCLK / 2, and sends one
+  READY banner (section 4.1). Bytes received
   before the end of the banner are discarded. The main loop then reads the
   UART receive events, assembles lines (line.c) and answers each request
   (dispatch.c). Only protocol records are sent on the link (section 2.3).
@@ -26,6 +28,7 @@
 | 1.1     | 23/10/2026 | Z. BEN-AKKA | Send the READY banner and serve protocol requests. |
 | 1.2     | 27/10/2026 | Z. BEN-AKKA | Turn LD1 off before the readiness banner. |
 | 1.3     | 28/10/2026 | Z. BEN-AKKA | Start SysTick and reset the QSPI flash before the banner. |
+| 1.4     | 29/10/2026 | Z. BEN-AKKA | Run the core at 216 MHz from the HSE before the banner. |
 ****************************
 */
 
@@ -36,6 +39,7 @@
 #include "line.h"
 #include "protocol.h"
 #include "qspi/qspi.h"
+#include "rcc/rcc.h"
 #include "reset_cause.h"
 
 static LineAssembler line; ///< Zero-initialized: no line in progress.
@@ -61,16 +65,24 @@ int main(void)
 {
   ResetCauseCapture(); // Before anything else (section 4.2)
 
-  UartInit(&BOARD_UART_VCP, HSI_HZ, HIL_UART_BAUDRATE); // No clock setup: the core runs from HSI at reset.
+  uint32_t core_hz = SYSCLK_HZ;
+  uint32_t uart_hz = APB2_HZ;
+  if (RccInit216MHz(HSE_HZ) != SUCCESS) {
+    RCC_CFGR = 0u; // Back on HSI with /1 prescalers: LCD_INIT reports DEVICE_ERROR (section 6.12)
+    core_hz = HSI_HZ;
+    uart_hz = HSI_HZ;
+  }
+
+  UartInit(&BOARD_UART_VCP, uart_hz, HIL_UART_BAUDRATE);
   UartRxStart(&BOARD_UART_VCP);
 
   LedInit(&BOARD_LED_LD1); // Port clock and PI1 output: LED_SET and LED_GET use them
   LedOff(&BOARD_LED_LD1);  // LD1 off after any reset, before the banner (section 6.4)
 
-  SysTickInit(HSI_HZ); // 1 ms tick: QSPI_ERASE and QSPI_WRITE bound their waits with it
+  SysTickInit(core_hz); // 1 ms tick: QSPI_ERASE and QSPI_WRITE bound their waits with it
 
   BoardQspiPinsInit();
-  QspiInit(N25Q128A_SIZE_LOG2, 0u); // QUADSPI at HCLK = HSI 16 MHz, under the flash maximum
+  QspiInit(N25Q128A_SIZE_LOG2, 1u); // HCLK / 2: 108 MHz, the flash maximum, or 8 MHz on HSI
   (void)QspiSoftwareReset();        // The flash is not reset with the MCU; a failure shows on QSPI_ID
 
   SendBanner();
