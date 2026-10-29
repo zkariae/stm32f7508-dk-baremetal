@@ -5,8 +5,8 @@
 \brief      Bootloader: map the QSPI flash and start the application in place.
 
 \author     Z. BEN-AKKA
-\version    1.6
-\date       28/10/2026
+\version    1.7
+\date       29/10/2026
 
 \details
   Runs from the internal flash and:
@@ -30,6 +30,7 @@
 | 1.4     | 11/10/2026 | Z. BEN-AKKA | Board wiring defined in the application.            |
 | 1.5     | 11/10/2026 | Z. BEN-AKKA | Board wiring from stm32f7508-dk/.                   |
 | 1.6     | 28/10/2026 | Z. BEN-AKKA | QUADSPI at HCLK / 2: app may run at 216 MHz.        |
+| 1.7     | 29/10/2026 | Z. BEN-AKKA | QspiInit comment shortened for clang-format.        |
 ****************************
 */
 
@@ -138,7 +139,7 @@ int main(void)
   UartPuts(console, "\nboot: 08-custombootloader\n");
 
   BoardQspiPinsInit();
-  QspiInit(N25Q128A_SIZE_LOG2, 1); // HCLK / 2: 8 MHz on HSI, 108 MHz if the application runs at 216 MHz
+  QspiInit(N25Q128A_SIZE_LOG2, 1); // HCLK / 2: 8 MHz on HSI, 108 MHz with the app at 216 MHz
   if (QspiSoftwareReset() != SUCCESS) {
     fail("QSPI stuck busy", 0);
   }
