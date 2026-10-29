@@ -5,8 +5,8 @@
 \brief      Show a palette-indexed logo over a gradient splash screen.
 
 \author     Z. BEN-AKKA
-\version    1.6
-\date       28/10/2026
+\version    1.7
+\date       29/10/2026
 
 \details
   1) Brings up the LTDC (common/lcd), with a black background.
@@ -26,6 +26,7 @@
 | 1.4     | 11/10/2026 | Z. BEN-AKKA | Board wiring defined in the application.            |
 | 1.5     | 11/10/2026 | Z. BEN-AKKA | Board wiring from stm32f7508-dk/.                   |
 | 1.6     | 28/10/2026 | Z. BEN-AKKA | Logo shown at once: frame drawn before the layer.   |
+| 1.7     | 29/10/2026 | Z. BEN-AKKA | Framebuffer placed by the linker in .framebuffer.   |
 ****************************
 */
 
@@ -41,11 +42,12 @@
 
 #define BAUDRATE 115200UL
 
-#define FB_ADDR  0x20010000UL                  ///< SRAM1: the LTDC cannot reach the DTCM.
-#define FB_BYTES (LCD_WIDTH * LCD_HEIGHT * 2U) ///< RGB565 framebuffer size.
+/// RGB565 framebuffer in SRAM (linker section .framebuffer): too large for the 64 KB DTCM.
+static volatile uint16_t fb_pixels[LCD_WIDTH * LCD_HEIGHT]
+    __attribute__((section(".framebuffer"), aligned(8)));
 
 /// The LCD framebuffer, shown by LTDC layer 1.
-static const Framebuffer screen = {(volatile uint16_t *)FB_ADDR, LCD_WIDTH, LCD_HEIGHT};
+static const Framebuffer screen = {fb_pixels, LCD_WIDTH, LCD_HEIGHT};
 
 static const Uart *const console = &BOARD_UART_VCP; ///< Console output.
 
@@ -107,7 +109,7 @@ int main(void)
   // The whole frame is drawn before layer 1 shows it: the first image is complete
   FbGradient(&screen, 10, 22, 46, 4, 8, 18); // dark blue to near-black, every pixel
   draw_logo((LCD_WIDTH - LOGO_WIDTH) / 2U, (LCD_HEIGHT - LOGO_HEIGHT) / 2U);
-  LtdcLayer1InitRgb565(&BOARD_LCD_TIMING, FB_ADDR);
+  LtdcLayer1InitRgb565(&BOARD_LCD_TIMING, (uint32_t)fb_pixels);
 
   // Panel and backlight last: the undriven panel is white, it must get the frame at once
   BoardLcdPowerOn();
