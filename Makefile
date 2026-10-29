@@ -5,8 +5,8 @@
 # \brief      Build, flash and document project images for a board.
 #
 # \author     Z. BEN-AKKA
-# \version    1.12
-# \date       28/10/2026
+# \version    1.13
+# \date       29/10/2026
 #
 # \details
 #   Says what to build: the applications, their sources, modules and
@@ -19,7 +19,7 @@
 #   only call. Applications and test images are declared as images; the rules
 #   for every image come from the IMAGE template. Both test images link the
 #   shared GPIO, UART and LED modules; hil-bench adds its protocol modules
-#   and headers, and the delay and QSPI modules. hil-bench also gets
+#   and headers, and the delay, QSPI and RCC modules. hil-bench also gets
 #   hil_build.h, the git revision it was built from, for its readiness banner.
 #   07-lcd-logo-xip pairs the 08 bootloader with 07-lcd-logo run in place
 #   from QSPI.
@@ -44,6 +44,7 @@
 # | 1.10    | 26/10/2026 | Z. BEN-AKKA | Add the reset-sw target (software reset).                   |
 # | 1.11    | 28/10/2026 | Z. BEN-AKKA | Link the delay and QSPI modules into the hil-bench image.   |
 # | 1.12    | 28/10/2026 | Z. BEN-AKKA | Add 07-lcd-logo-xip: the logo run in place from QSPI.       |
+# | 1.13    | 29/10/2026 | Z. BEN-AKKA | Link the RCC module into the hil-bench image.               |
 # ****************************
 # */
 
@@ -94,7 +95,7 @@ $(foreach a,$(SINGLE),$(eval $(a)_SRCS := $(APPS_DIR)/$(a)/main.c))
 HIL_BENCH := tests/firmware/hil_bench
 hil-bench_IMAGES  := hil-bench
 hil-bench_SRCS    := $(addprefix $(HIL_BENCH)/,main.c reset_cause.c line.c protocol.c dispatch.c commands.c)
-hil-bench_MODULES := delay gpio led qspi uart
+hil-bench_MODULES := delay gpio led qspi rcc uart
 hil-bench_CFLAGS  := -I$(HIL_BENCH)/inc -I$(BUILD)/hil-bench
 
 # UART driver diagnostic: raw echo and RX error markers (uart_rx_check.py T1-T8)
