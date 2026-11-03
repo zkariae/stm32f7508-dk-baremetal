@@ -4,15 +4,17 @@
 # \brief      HIL protocol tests: Python dependencies and pytest settings.
 #
 # \author     Z. BEN-AKKA
-# \version    1.2
-# \date       26/10/2026
+# \version    1.5
+# \date       03/11/2026
 #
 # \details
 #   Run from the repository root with: python3 -m pytest tests/host/hil
 #   This file makes tests/host/hil the pytest root, so adapters/ and
 #   fixtures/ import from here. The log file path comes from results_dir in
 #   tests/host/config/bench.yaml; fixtures/board_fixtures.py sets it.
-#   -m unit runs without a board; -m protocol selects the conformance cases.
+#   -m unit runs without a board; -m protocol selects the conformance cases;
+#   -m led the LED cases; -m qspi the QSPI cases; -m lcd the GPIO and LCD
+#   cases.
 #
 # \section hil_pyproject_toml_version_history Version history
 # | Version | Date       | Author      | Description      |
@@ -20,6 +22,9 @@
 # | 1.0     | 26/10/2026 | Z. BEN-AKKA | Initial version. |
 # | 1.1     | 26/10/2026 | Z. BEN-AKKA | Short live log format for --log-cli-level=INFO. |
 # | 1.2     | 26/10/2026 | Z. BEN-AKKA | Add the protocol and unit markers and the unit/ folder. |
+# | 1.3     | 27/10/2026 | Z. BEN-AKKA | Add the led marker. |
+# | 1.4     | 28/10/2026 | Z. BEN-AKKA | Add the qspi marker. |
+# | 1.5     | 03/11/2026 | Z. BEN-AKKA | Add the lcd marker. |
 # ****************************
 
 [project]
@@ -41,6 +46,9 @@ markers = [
   "smoke: readiness banner, HELLO and CAPS of the hil-bench firmware",
   "protocol: protocol.md conformance cases on the board (cases/test_protocol_*.py)",
   "unit: host tests of the adapters against a fake firmware, no board needed",
+  "led: LED_SET and LED_GET on the board (cases/test_led.py)",
+  "qspi: QSPI_ID, QSPI_READ, QSPI_ERASE and QSPI_WRITE on the board (cases/test_qspi.py)",
+  "lcd: GPIO_CONFIG and the LCD commands on the board (cases/test_lcd.py)",
 ]
 # Every serial line sent and received, and the make output, for the report
 # (protocol.md section 8.4)

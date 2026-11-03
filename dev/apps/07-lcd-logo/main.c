@@ -2,16 +2,17 @@
 /*!
 ****************************
 \file       07-lcd-logo/main.c
-\brief      Fade a palette-indexed logo in over a gradient splash screen.
+\brief      Show a palette-indexed logo over a gradient splash screen.
 
 \author     Z. BEN-AKKA
-\version    1.5
-\date       11/10/2026
+\version    1.7
+\date       29/10/2026
 
 \details
-  1) Brings up the LTDC and layer 1 (common/lcd, common/fb).
-  2) Draws a vertical gradient background.
-  3) Fades the logo in, then draws it opaque.
+  1) Brings up the LTDC (common/lcd), with a black background.
+  2) Draws the vertical gradient and the logo in the framebuffer (common/fb).
+  3) Only then enables layer 1, and last powers the panel and its backlight:
+     the undriven panel is white, so the first image shown is complete.
   The logo (logo.h, from tools/png2c.py) is 8-bit indexed with an RGB565
   palette, half the flash of RGB565; index 0 is transparent.
 
@@ -24,6 +25,8 @@
 | 1.3     | 10/10/2026 | Z. BEN-AKKA | Generic drivers, board specifics from common/board. |
 | 1.4     | 11/10/2026 | Z. BEN-AKKA | Board wiring defined in the application.            |
 | 1.5     | 11/10/2026 | Z. BEN-AKKA | Board wiring from stm32f7508-dk/.                   |
+| 1.6     | 28/10/2026 | Z. BEN-AKKA | Logo shown at once: frame drawn before the layer.   |
+| 1.7     | 29/10/2026 | Z. BEN-AKKA | Framebuffer placed by the linker in .framebuffer.   |
 ****************************
 */
 
@@ -39,11 +42,12 @@
 
 #define BAUDRATE 115200UL
 
-#define FB_ADDR  0x20010000UL                  ///< SRAM1: the LTDC cannot reach the DTCM.
-#define FB_BYTES (LCD_WIDTH * LCD_HEIGHT * 2U) ///< RGB565 framebuffer size.
+/// RGB565 framebuffer in SRAM (linker section .framebuffer): too large for the 64 KB DTCM.
+static volatile uint16_t fb_pixels[LCD_WIDTH * LCD_HEIGHT]
+    __attribute__((section(".framebuffer"), aligned(8)));
 
 /// The LCD framebuffer, shown by LTDC layer 1.
-static const Framebuffer screen = {(volatile uint16_t *)FB_ADDR, LCD_WIDTH, LCD_HEIGHT};
+static const Framebuffer screen = {fb_pixels, LCD_WIDTH, LCD_HEIGHT};
 
 static const Uart *const console = &BOARD_UART_VCP; ///< Console output.
 
@@ -71,47 +75,6 @@ static void draw_logo(uint32_t x0, uint32_t y0)
 }
 
 /*!
-\brief  Blend the logo over the framebuffer with a global alpha.
-
-\details
-  The blend is done per RGB565 channel, without unpacking to 8-8-8.
-
-\param  x0     Left edge.
-\param  y0     Top edge.
-\param  alpha  0 = invisible, 255 = opaque.
-*/
-static void draw_logo_alpha(uint32_t x0, uint32_t y0, uint8_t alpha)
-{
-  for (uint32_t y = 0; y < LOGO_HEIGHT; y++) {
-    if (y0 + y >= LCD_HEIGHT)
-      break;
-
-    const uint8_t *row = &logo_data[y * LOGO_WIDTH];
-    volatile uint16_t *dst = &screen.pixels[(y0 + y) * LCD_WIDTH + x0];
-
-    for (uint32_t x = 0; x < LOGO_WIDTH; x++) {
-      if (x0 + x >= LCD_WIDTH)
-        break;
-      uint8_t idx = row[x];
-      if (idx == 0U)
-        continue;
-
-      uint16_t src = logo_palette[idx];
-      uint16_t bg = dst[x];
-
-      uint32_t sr = (src >> 11) & 0x1FU, sg = (src >> 5) & 0x3FU, sb = src & 0x1FU;
-      uint32_t br = (bg >> 11) & 0x1FU, bg2 = (bg >> 5) & 0x3FU, bb = bg & 0x1FU;
-
-      uint32_t r = (sr * alpha + br * (255U - alpha)) / 255U;
-      uint32_t g = (sg * alpha + bg2 * (255U - alpha)) / 255U;
-      uint32_t b = (sb * alpha + bb * (255U - alpha)) / 255U;
-
-      dst[x] = (uint16_t)((r << 11) | (g << 5) | b);
-    }
-  }
-}
-
-/*!
 \brief  Print the logo size and its flash footprint.
 */
 static void print_logo_info(void)
@@ -128,26 +91,7 @@ static void print_logo_info(void)
 }
 
 /*!
-\brief  Fade the logo in over the gradient in about one second.
-
-\details
-  The background is redrawn at each step so that partial blends do not
-  accumulate.
-
-\param  x  Left edge of the logo.
-\param  y  Top edge of the logo.
-*/
-static void fade_in_logo(uint32_t x, uint32_t y)
-{
-  for (uint32_t a = 0; a <= 255U; a += 5U) {
-    FbGradient(&screen, 10, 22, 46, 4, 8, 18);
-    draw_logo_alpha(x, y, (uint8_t)a);
-    DelayMs(16);
-  }
-}
-
-/*!
-\brief  Application entry point: splash screen with a fading logo.
+\brief  Application entry point: splash screen with the logo.
 \return Never returns.
 */
 int main(void)
@@ -160,19 +104,15 @@ int main(void)
 
   RccInitPixelClock9MHz();
   BoardLcdPinsInit();
+  LtdcInit(&BOARD_LCD_TIMING, 0x00000000U); // Black background until layer 1 is on
+
+  // The whole frame is drawn before layer 1 shows it: the first image is complete
+  FbGradient(&screen, 10, 22, 46, 4, 8, 18); // dark blue to near-black, every pixel
+  draw_logo((LCD_WIDTH - LOGO_WIDTH) / 2U, (LCD_HEIGHT - LOGO_HEIGHT) / 2U);
+  LtdcLayer1InitRgb565(&BOARD_LCD_TIMING, (uint32_t)fb_pixels);
+
+  // Panel and backlight last: the undriven panel is white, it must get the frame at once
   BoardLcdPowerOn();
-  LtdcInit(&BOARD_LCD_TIMING, 0x00000000U);
-
-  FbClear(&screen, Rgb565(0, 0, 0));
-  LtdcLayer1InitRgb565(&BOARD_LCD_TIMING, FB_ADDR);
-
-  FbGradient(&screen, 10, 22, 46, 4, 8, 18); // dark blue to near-black
-
-  const uint32_t x = (LCD_WIDTH - LOGO_WIDTH) / 2U;
-  const uint32_t y = (LCD_HEIGHT - LOGO_HEIGHT) / 2U;
-
-  fade_in_logo(x, y);
-  draw_logo(x, y);
   UartPuts(console, "logo drawn\n");
 
   if (LtdcFifoUnderrun()) {

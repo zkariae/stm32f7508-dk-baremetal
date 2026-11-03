@@ -5,8 +5,8 @@
 \brief      Split received records into tokens and write records to send.
 
 \author     Z. BEN-AKKA
-\version    1.0
-\date       23/10/2026
+\version    1.1
+\date       28/10/2026
 
 \details
   Implements the record syntax of protocol.md section 2.3. RecordSplit()
@@ -14,11 +14,14 @@
   tokens. A Record is built field by field in a buffer and RecordSend() sends
   it with CRLF only if it fits in HIL_LINE_MAX_LEN bytes. The firmware is
   built without a C library, so the few string helpers it needs are here.
+  Hexadecimal values are read with digits in uppercase or lowercase and
+  written in uppercase (protocol.md section 6.6).
 
 \section protocol_h_version_history Version history
 | Version | Date       | Author      | Description      |
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 23/10/2026 | Z. BEN-AKKA | Initial version. |
+| 1.1     | 28/10/2026 | Z. BEN-AKKA | Parse hexadecimal values and bytes; add hexadecimal bytes. |
 ****************************
 */
 
@@ -67,6 +70,24 @@ int RecordSplitField(char *token, char **key, char **value);
 int RecordParseDec(const char *text, uint32_t max, uint32_t *value);
 
 /*!
+\brief  Parse a hexadecimal value: lowercase 0x, then 1 to 8 digits in either case.
+\param  text   NUL-terminated value.
+\param  value  Receives the value.
+\return 1 if text is a valid value, otherwise 0.
+*/
+int RecordParseHex32(const char *text, uint32_t *value);
+
+/*!
+\brief  Parse hexadecimal bytes: two digits per byte, in either case, first byte first.
+\param  text   NUL-terminated digits, without 0x.
+\param  bytes  Receives the bytes.
+\param  max    Most bytes accepted, the size of bytes.
+\return Number of bytes; 0 if text is empty, has an odd number of digits, a
+        character that is not a hexadecimal digit, or more than max bytes.
+*/
+uint32_t RecordParseHexBytes(const char *text, uint8_t *bytes, uint32_t max);
+
+/*!
 \brief  Compare two NUL-terminated strings.
 \return 1 if they are equal, otherwise 0.
 */
@@ -98,6 +119,15 @@ void RecordAddDec(Record *record, const char *key, uint32_t value);
 \brief  Append a field with a value written as 0x and eight uppercase hexadecimal digits.
 */
 void RecordAddHex32(Record *record, const char *key, uint32_t value);
+
+/*!
+\brief  Append a field with bytes written as two uppercase hexadecimal digits each.
+\param  record  Record to write.
+\param  key     Field key.
+\param  bytes   Bytes to write, first byte first.
+\param  len     Number of bytes, at least 1.
+*/
+void RecordAddHexBytes(Record *record, const char *key, const uint8_t *bytes, uint32_t len);
 
 /*!
 \brief  Bytes still free in the record before it reaches HIL_LINE_MAX_LEN.

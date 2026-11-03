@@ -5,8 +5,8 @@
 # \brief      Build, flash and document project images for a board.
 #
 # \author     Z. BEN-AKKA
-# \version    1.10
-# \date       26/10/2026
+# \version    1.14
+# \date       29/10/2026
 #
 # \details
 #   Says what to build: the applications, their sources, modules and
@@ -19,8 +19,11 @@
 #   only call. Applications and test images are declared as images; the rules
 #   for every image come from the IMAGE template. Both test images link the
 #   shared GPIO, UART and LED modules; hil-bench adds its protocol modules
-#   and headers. hil-bench also gets hil_build.h, the git revision it was
-#   built from, for its readiness banner.
+#   and headers, and the delay, framebuffer, LTDC, QSPI and RCC modules.
+#   hil-bench also gets hil_build.h, the git revision it was built from, for
+#   its readiness banner.
+#   07-lcd-logo-xip pairs the 08 bootloader with 07-lcd-logo run in place
+#   from QSPI.
 #     make 01-blink            build one application
 #     make 01-blink-flash      build and flash it with the ST-LINK
 #     make BOARD=<name> ...    build for another board folder
@@ -40,6 +43,10 @@
 # | 1.8     | 22/10/2026 | Z. BEN-AKKA | Generate the hil-bench build ID from the git revision.      |
 # | 1.9     | 23/10/2026 | Z. BEN-AKKA | Link the protocol modules into the hil-bench image.         |
 # | 1.10    | 26/10/2026 | Z. BEN-AKKA | Add the reset-sw target (software reset).                   |
+# | 1.11    | 28/10/2026 | Z. BEN-AKKA | Link the delay and QSPI modules into the hil-bench image.   |
+# | 1.12    | 28/10/2026 | Z. BEN-AKKA | Add 07-lcd-logo-xip: the logo run in place from QSPI.       |
+# | 1.13    | 29/10/2026 | Z. BEN-AKKA | Link the RCC module into the hil-bench image.               |
+# | 1.14    | 29/10/2026 | Z. BEN-AKKA | Link the LCD commands and the fb and LTDC modules into hil-bench. |
 # ****************************
 # */
 
@@ -89,8 +96,8 @@ $(foreach a,$(SINGLE),$(eval $(a)_SRCS := $(APPS_DIR)/$(a)/main.c))
 # Hardware-in-the-loop bench firmware: the protocol of tests/protocol.md
 HIL_BENCH := tests/firmware/hil_bench
 hil-bench_IMAGES  := hil-bench
-hil-bench_SRCS    := $(addprefix $(HIL_BENCH)/,main.c reset_cause.c line.c protocol.c dispatch.c commands.c)
-hil-bench_MODULES := gpio uart led
+hil-bench_SRCS    := $(addprefix $(HIL_BENCH)/,main.c reset_cause.c line.c protocol.c dispatch.c commands.c lcd_commands.c)
+hil-bench_MODULES := delay fb gpio led ltdc qspi rcc uart
 hil-bench_CFLAGS  := -I$(HIL_BENCH)/inc -I$(BUILD)/hil-bench
 
 # UART driver diagnostic: raw echo and RX error markers (uart_rx_check.py T1-T8)
@@ -120,7 +127,17 @@ BOOT_MODULES := boot delay gpio led qspi uart
 09-securebootloader-app_MODULES  := $(01-blink_MODULES)
 09-securebootloader-app_MEMORY   := qspi
 
-MULTI  := 08-custombootloader 09-securebootloader
+# 07 run in place: the 08 bootloader, and 07-lcd-logo, unchanged, relinked to
+# run from QSPI. The bootloader runs the QUADSPI at HCLK / 2, so the logo
+# application may switch to 216 MHz.
+07-lcd-logo-xip_IMAGES       := 07-lcd-logo-xip-app 07-lcd-logo-xip-boot
+07-lcd-logo-xip-boot_SRCS    := $(APPS_DIR)/08-custombootloader/main.c
+07-lcd-logo-xip-boot_MODULES := $(BOOT_MODULES)
+07-lcd-logo-xip-app_SRCS     := $(APPS_DIR)/07-lcd-logo/main.c
+07-lcd-logo-xip-app_MODULES  := $(07-lcd-logo_MODULES)
+07-lcd-logo-xip-app_MEMORY   := qspi
+
+MULTI  := 08-custombootloader 09-securebootloader 07-lcd-logo-xip
 APPS   := $(SINGLE) $(MULTI) hil-bench uart-diag
 IMAGES := $(foreach a,$(APPS),$($(a)_IMAGES))
 
@@ -304,7 +321,7 @@ help:
 	@echo "  <app>-dfu            build and flash the internal-flash image over USB DFU"
 	@echo "  <app>-clean          remove its build outputs"
 	@echo ""
-	@echo "Per image (an application, or 08/09's <app>-boot and <app>-app):"
+	@echo "Per image (an application, or 08/09/07-lcd-logo-xip's <app>-boot and <app>-app):"
 	@echo "  <image>-size         flash and RAM usage"
 	@echo "  <image>-disasm       disassembly"
 	@echo "  <image>-sections     section addresses"

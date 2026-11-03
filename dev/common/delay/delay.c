@@ -5,8 +5,8 @@
 \brief      Busy-wait and SysTick-based delays.
 
 \author     Z. BEN-AKKA
-\version    1.1
-\date       11/10/2026
+\version    1.2
+\date       29/10/2026
 
 \details
   API documented in delay.h.
@@ -16,6 +16,7 @@
 |:-------:|:----------:|:------------|:----------------------------------|
 | 1.0     | 10/10/2026 | Z. BEN-AKKA | Initial version.                  |
 | 1.1     | 11/10/2026 | Z. BEN-AKKA | Registers from the board's mcu.h. |
+| 1.2     | 29/10/2026 | Z. BEN-AKKA | Add SysTickMs().                  |
 ****************************
 */
 
@@ -56,4 +57,9 @@ void DelayMs(uint32_t ms)
   while ((g_ticks - start) < ms) {
     __asm__("nop");
   }
+}
+
+uint32_t SysTickMs(void)
+{
+  return g_ticks;
 }

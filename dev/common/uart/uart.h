@@ -5,8 +5,8 @@
 \brief      USART transmit and interrupt-driven receive API, 8N1.
 
 \author     Z. BEN-AKKA
-\version    1.3
-\date       16/10/2026
+\version    1.4
+\date       29/10/2026
 
 \details
   Each USART is described by a Uart structure (instance, clock enable, and
@@ -20,6 +20,7 @@
 | 1.1     | 10/10/2026 | Z. BEN-AKKA | Generic: the USART is a parameter.           |
 | 1.2     | 11/10/2026 | Z. BEN-AKKA | Board instances defined by the applications. |
 | 1.3     | 16/10/2026 | Z. BEN-AKKA | Declare non-blocking interrupt-driven RX API. |
+| 1.4     | 29/10/2026 | Z. BEN-AKKA | Formatted with clang-format.                 |
 ****************************
 */
 
@@ -58,11 +59,11 @@ typedef uint16_t UartRxEvent;
 
 /// Counters for received bytes and receive-side error events.
 typedef struct {
-  uint32_t bytes_received;      ///< Bytes accepted into the RX event queue.
-  uint32_t framing_errors;     ///< USART framing errors (FE).
-  uint32_t overrun_errors;     ///< USART overrun errors (ORE).
-  uint32_t noise_errors;       ///< USART noise errors (NE).
-  uint32_t buffer_overflows;   ///< Bytes dropped because the RX queue was full.
+  uint32_t bytes_received;   ///< Bytes accepted into the RX event queue.
+  uint32_t framing_errors;   ///< USART framing errors (FE).
+  uint32_t overrun_errors;   ///< USART overrun errors (ORE).
+  uint32_t noise_errors;     ///< USART noise errors (NE).
+  uint32_t buffer_overflows; ///< Bytes dropped because the RX queue was full.
 } UartRxStats;
 
 /*!
