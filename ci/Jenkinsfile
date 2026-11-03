@@ -1,0 +1,76 @@
+// SPDX-License-Identifier: MIT
+/*!
+****************************
+\file       ci/Jenkinsfile
+\brief      Declarative pipeline of the Multibranch job: build, then the board tests.
+
+\author     Z. BEN-AKKA
+\version    1.0
+\date       03/11/2026
+
+\details
+  Read by the Multibranch Pipeline job (Script Path ci/Jenkinsfile), see
+  ci/README.md section 4. Every build runs Checkout and Build; a pull
+  request also runs UART T1-T8 and HIL on the board. The pipeline stops at
+  the first failing stage, so a build error never reaches the board.
+  GitHub Branch Source publishes the result as the status
+  continuous-integration/jenkins/pr-merge required by the rulesets.
+
+\section ci_jenkinsfile_version_history Version history
+| Version | Date       | Author      | Description      |
+|:-------:|:----------:|:------------|:-----------------|
+| 1.0     | 03/11/2026 | Z. BEN-AKKA | Initial version. |
+****************************
+*/
+
+pipeline {
+  // One executor, on the PC that holds the board
+  agent any
+
+  options {
+    skipDefaultCheckout()     // Done in the Checkout stage, with the submodule
+    disableConcurrentBuilds() // One board
+    timeout(time: 30, unit: 'MINUTES')
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+        // The submodule is public: HTTPS needs no key, unlike its git@ URL
+        sh 'git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init'
+        // The workspace is kept between builds: never report the last build's tests
+        sh 'rm -rf work/hil-results'
+      }
+    }
+
+    stage('Build') {
+      steps {
+        sh 'ci/scripts/build.sh --clean'
+      }
+    }
+
+    stage('UART T1-T8') {
+      when { changeRequest() }
+      steps {
+        sh 'ci/scripts/rx_check.sh'
+      }
+    }
+
+    stage('HIL') {
+      when { changeRequest() }
+      steps {
+        sh 'ci/scripts/hil.sh'
+      }
+    }
+  }
+
+  post {
+    always {
+      // A push build runs no HIL stage, so it has no report
+      junit allowEmptyResults: true, testResults: 'work/hil-results/junit.xml'
+      archiveArtifacts allowEmptyArchive: true, artifacts: 'work/build/**/*.bin, work/hil-results/*'
+    }
+  }
+}
