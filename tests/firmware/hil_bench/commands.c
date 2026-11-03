@@ -2,14 +2,15 @@
 /*!
 ****************************
 \file       hil_bench/commands.c
-\brief      Command table of the HIL protocol firmware: HELLO, CAPS, LED and QSPI commands.
+\brief      Command table of the HIL protocol firmware: HELLO, CAPS, LED, QSPI, GPIO and LCD commands.
 
 \author     Z. BEN-AKKA
-\version    1.2
-\date       28/10/2026
+\version    1.3
+\date       29/10/2026
 
 \details
-  Implements protocol.md sections 6.2 to 6.10.
+  Implements protocol.md sections 6.2 to 6.10; GPIO_CONFIG and the LCD
+  commands (sections 6.11 to 6.19) are in lcd_commands.c.
   - HELLO takes no argument and returns name, proto, fw and build, the
     values of the readiness banner.
   - CAPS returns the table names from start (default 0), as many as fit in
@@ -30,6 +31,7 @@
 | 1.0     | 23/10/2026 | Z. BEN-AKKA | Initial version. |
 | 1.1     | 27/10/2026 | Z. BEN-AKKA | Add LED_SET and LED_GET. |
 | 1.2     | 28/10/2026 | Z. BEN-AKKA | Add QSPI_ID, QSPI_READ, QSPI_ERASE and QSPI_WRITE. |
+| 1.3     | 29/10/2026 | Z. BEN-AKKA | Add the GPIO_CONFIG and LCD commands; FindArg shared as CommandFindArg. |
 ****************************
 */
 
@@ -40,6 +42,7 @@
 #include "board.h" // BOARD_LED_LD1, GPIO_IDR
 #include "defines.h"
 #include "hil_protocol.h"
+#include "lcd_commands.h"
 #include "qspi/qspi.h"
 
 #define CAPS_NAMES_PREFIX_LEN 7u ///< " names=" before the names.
@@ -65,6 +68,14 @@ static const Command commands[] = {
   {HIL_CMD_QSPI_READ, QspiReadCmd},
   {HIL_CMD_QSPI_ERASE, QspiEraseCmd},
   {HIL_CMD_QSPI_WRITE, QspiWriteCmd},
+  {HIL_CMD_GPIO_CONFIG, GpioConfigCmd},
+  {HIL_CMD_LCD_INIT, LcdInitCmd},
+  {HIL_CMD_LCD_CLOCK, LcdClockCmd},
+  {HIL_CMD_LCD_TIMING, LcdTimingCmd},
+  {HIL_CMD_LCD_LAYER, LcdLayerCmd},
+  {HIL_CMD_LCD_SCAN, LcdScanCmd},
+  {HIL_CMD_LCD_FILL, LcdFillCmd},
+  {HIL_CMD_LCD_PIXEL, LcdPixelCmd},
 };
 
 #define COMMAND_COUNT ((uint32_t)(sizeof commands / sizeof commands[0]))
@@ -191,21 +202,6 @@ static const char *LedGet(const CommandArg *args, uint32_t count, Record *result
 }
 
 /*!
-\brief  Value of the argument with this key, or NULL if it is missing.
-\details dispatch.c has checked that keys are distinct, so a command that
-         takes N arguments checks count == N and finds each of them.
-*/
-static const char *FindArg(const CommandArg *args, uint32_t count, const char *key)
-{
-  for (uint32_t i = 0u; i < count; ++i) {
-    if (RecordStrEq(args[i].key, key)) {
-      return args[i].value;
-    }
-  }
-  return NULL;
-}
-
-/*!
 \brief  Response code of a failed qspi.c call.
 \details Arguments are checked before the call, so FAILURE from the driver
          guards is a firmware fault, not a host one.
@@ -248,8 +244,8 @@ static const char *QspiId(const CommandArg *args, uint32_t count, Record *result
 */
 static const char *QspiReadCmd(const CommandArg *args, uint32_t count, Record *result)
 {
-  const char *addr_text = FindArg(args, count, HIL_KEY_ADDR);
-  const char *len_text = FindArg(args, count, HIL_KEY_LEN);
+  const char *addr_text = CommandFindArg(args, count, HIL_KEY_ADDR);
+  const char *len_text = CommandFindArg(args, count, HIL_KEY_LEN);
   uint8_t data[HIL_QSPI_DATA_MAX];
   uint32_t addr;
   uint32_t len;
@@ -275,7 +271,7 @@ static const char *QspiReadCmd(const CommandArg *args, uint32_t count, Record *r
 */
 static const char *QspiEraseCmd(const CommandArg *args, uint32_t count, Record *result)
 {
-  const char *addr_text = FindArg(args, count, HIL_KEY_ADDR);
+  const char *addr_text = CommandFindArg(args, count, HIL_KEY_ADDR);
   uint32_t addr;
   int status;
 
@@ -293,8 +289,8 @@ static const char *QspiEraseCmd(const CommandArg *args, uint32_t count, Record *
 */
 static const char *QspiWriteCmd(const CommandArg *args, uint32_t count, Record *result)
 {
-  const char *addr_text = FindArg(args, count, HIL_KEY_ADDR);
-  const char *data_text = FindArg(args, count, HIL_KEY_DATA);
+  const char *addr_text = CommandFindArg(args, count, HIL_KEY_ADDR);
+  const char *data_text = CommandFindArg(args, count, HIL_KEY_DATA);
   uint8_t data[HIL_QSPI_DATA_MAX];
   uint32_t addr;
   uint32_t n;
@@ -317,6 +313,16 @@ const Command *CommandFind(const char *name)
   for (uint32_t i = 0u; i < COMMAND_COUNT; ++i) {
     if (RecordStrEq(commands[i].name, name)) {
       return &commands[i];
+    }
+  }
+  return NULL;
+}
+
+const char *CommandFindArg(const CommandArg *args, uint32_t count, const char *key)
+{
+  for (uint32_t i = 0u; i < count; ++i) {
+    if (RecordStrEq(args[i].key, key)) {
+      return args[i].value;
     }
   }
   return NULL;
