@@ -5,18 +5,19 @@
 \brief      Busy-wait and SysTick-based delays.
 
 \author     Z. BEN-AKKA
-\version    1.0
-\date       10/10/2026
+\version    1.1
+\date       29/10/2026
 
 \details
-  DelayCycles() works at any clock without setup. DelayMs() needs
-  SysTickInit(), which starts a 1 ms interrupt (SysTick_Handler is defined
-  here and replaces the weak default of startup.c).
+  DelayCycles() works at any clock without setup. DelayMs() and SysTickMs()
+  need SysTickInit(), which starts a 1 ms interrupt (SysTick_Handler is
+  defined here and replaces the weak default of startup.c).
 
 \section delay_h_version_history Version history
 | Version | Date       | Author      | Description      |
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 10/10/2026 | Z. BEN-AKKA | Initial version. |
+| 1.1     | 29/10/2026 | Z. BEN-AKKA | Add SysTickMs(). |
 ****************************
 */
 
@@ -46,5 +47,12 @@ void SysTickInit(uint32_t hclk_hz);
 \param  ms  Delay in milliseconds; requires SysTickInit().
 */
 void DelayMs(uint32_t ms);
+
+/*!
+\brief  Milliseconds since SysTickInit(); wraps after 2^32 ms.
+\details Compare two values by subtraction, as DelayMs() does, to survive the wrap.
+\return Millisecond counter; requires SysTickInit().
+*/
+uint32_t SysTickMs(void);
 
 #endif

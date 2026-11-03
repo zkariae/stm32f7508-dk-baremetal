@@ -5,7 +5,7 @@
 \brief      QUADSPI driver for a single serial NOR flash.
 
 \author     Z. BEN-AKKA
-\version    1.7
+\version    1.8
 \date       29/10/2026
 
 \details
@@ -22,6 +22,7 @@
 | 1.5     | 28/10/2026 | Z. BEN-AKKA | Status, read, 4 KB erase and page program.   |
 | 1.6     | 28/10/2026 | Z. BEN-AKKA | NCS high 6 cycles, half-cycle sample shift.  |
 | 1.7     | 29/10/2026 | Z. BEN-AKKA | Formatted with clang-format.                 |
+| 1.8     | 29/10/2026 | Z. BEN-AKKA | QspiRead with FAST READ: valid to 108 MHz.   |
 ****************************
 */
 
@@ -40,13 +41,14 @@
 #define CMD_READ_ID      0x9F
 #define CMD_READ_STATUS  0x05
 #define CMD_WRITE_ENABLE 0x06
-#define CMD_READ         0x03
+#define CMD_FAST_READ    0x0B
 #define CMD_PAGE_PROGRAM 0x02
 #define CMD_ERASE_4K     0x20
 
-#define STATUS_WIP    (1U << 0) ///< Status register: write in progress.
-#define PAGE_SIZE     256U      ///< Bytes of one program page.
-#define ERASE_4K_SIZE 4096U     ///< Bytes of one 4 KB erase block.
+#define STATUS_WIP      (1U << 0) ///< Status register: write in progress.
+#define PAGE_SIZE       256U      ///< Bytes of one program page.
+#define ERASE_4K_SIZE   4096U     ///< Bytes of one 4 KB erase block.
+#define FAST_READ_DUMMY 8U        ///< Power-on default dummy cycles of FAST READ.
 
 #define QSPI_BUSY_TIMEOUT 1000000U ///< Polls of a status flag before giving up.
 
@@ -244,8 +246,10 @@ int QspiRead(uint32_t addr, uint8_t *data, uint32_t len)
   if (len == 0U) {
     return FAILURE;
   }
-  return qspi_read_bytes(QSPI_CCR_FMODE_READ | QSPI_CCR_DMODE(1) | CCR_ADDR_1LINE | CMD_READ, addr,
-                         data, len);
+  // READ (0x03) is limited to 54 MHz; FAST READ runs up to 108 MHz
+  return qspi_read_bytes(QSPI_CCR_FMODE_READ | QSPI_CCR_DMODE(1) | QSPI_CCR_DCYC(FAST_READ_DUMMY) |
+                             CCR_ADDR_1LINE | CMD_FAST_READ,
+                         addr, data, len);
 }
 
 int QspiErase4K(uint32_t addr, uint32_t timeout_ms)

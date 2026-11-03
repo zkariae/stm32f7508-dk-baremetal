@@ -5,14 +5,15 @@
 \brief      QUADSPI driver for a single serial NOR flash.
 
 \author     Z. BEN-AKKA
-\version    1.4
-\date       28/10/2026
+\version    1.5
+\date       29/10/2026
 
 \details
   Chip independent: the flash size, read command and dummy cycles are
   parameters; reset and ID use the JEDEC standard commands (0x66/0x99, 0x9F).
   Status, read, erase and program use the JEDEC standard commands too: read
-  status (0x05), write enable (0x06), read (0x03), page program (0x02) and
+  status (0x05), write enable (0x06), fast read (0x0B, 8 dummy cycles: up to
+  108 MHz, where read 0x03 stops at 54 MHz), page program (0x02) and
   4 KB erase (0x20), in indirect mode with instruction, address and data on
   one line (1-1-1).
   The pins must be configured first, by the application (GpioSetAf()).
@@ -27,6 +28,7 @@
 | 1.2     | 11/10/2026 | Z. BEN-AKKA | Pins configured by the applications.         |
 | 1.3     | 27/10/2026 | Z. BEN-AKKA | Status, read, 4 KB erase and page program.   |
 | 1.4     | 28/10/2026 | Z. BEN-AKKA | QspiInit: timing and prescaler choice.       |
+| 1.5     | 29/10/2026 | Z. BEN-AKKA | QspiRead with FAST READ: valid to 108 MHz.   |
 ****************************
 */
 
@@ -84,7 +86,7 @@ int QspiReadStatus(uint8_t *status);
 int QspiWaitReady(uint32_t timeout_ms);
 
 /*!
-\brief  Read bytes in indirect mode (command 0x03, 24-bit address, no dummy cycle).
+\brief  Read bytes in indirect mode (command 0x0B, 24-bit address, 8 dummy cycles).
 \param  addr  Offset in the flash.
 \param  data  Output buffer of len bytes.
 \param  len   Number of bytes, at least 1.

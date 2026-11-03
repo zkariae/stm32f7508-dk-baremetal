@@ -5,8 +5,8 @@
 \brief      Command table of the HIL protocol firmware.
 
 \author     Z. BEN-AKKA
-\version    1.0
-\date       23/10/2026
+\version    1.1
+\date       29/10/2026
 
 \details
   Implements protocol.md section 6. Each command checks its own arguments
@@ -17,6 +17,7 @@
 | Version | Date       | Author      | Description      |
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 23/10/2026 | Z. BEN-AKKA | Initial version. |
+| 1.1     | 29/10/2026 | Z. BEN-AKKA | Add CommandFindArg(), shared with lcd_commands.c. |
 ****************************
 */
 
@@ -59,5 +60,16 @@ typedef struct {
 \return The command, or NULL if the firmware does not implement it.
 */
 const Command *CommandFind(const char *name);
+
+/*!
+\brief  Value of the argument with this key.
+\details dispatch.c has checked that keys are distinct, so a command that
+         takes N arguments checks count == N and finds each of them.
+\param  args   Request arguments.
+\param  count  Number of arguments.
+\param  key    Key to look for.
+\return The value, or NULL if the argument is missing.
+*/
+const char *CommandFindArg(const CommandArg *args, uint32_t count, const char *key);
 
 #endif /* COMMANDS_H */
