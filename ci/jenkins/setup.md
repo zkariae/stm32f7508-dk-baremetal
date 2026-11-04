@@ -5,7 +5,7 @@
 \brief      Set-up of Jenkins in WSL2, of its access to the board and of the GitHub rulesets.
 
 \author     Z. BEN-AKKA
-\version    1.0
+\version    1.1
 \date       04/11/2026
 
 \details
@@ -20,6 +20,7 @@
 | Version | Date       | Author      | Description      |
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 04/11/2026 | Z. BEN-AKKA | Initial version. |
+| 1.1     | 04/11/2026 | Z. BEN-AKKA | Port 8090, Windows port conflict, token and SSH key findings from D8. |
 ****************************
 -->
 
@@ -48,33 +49,61 @@ developer, so it uses the same toolchain and sees the same USB devices.
 | systemd | enabled: `systemd=true` in the `[boot]` section of `/etc/wsl.conf` |
 | Jenkins | 2.568.3 LTS, installed with apt from `pkg.jenkins.io` |
 | Java | OpenJDK 21.0.12 |
-| Service | `jenkins`, home `/var/lib/jenkins`, port 8080 |
+| Service | `jenkins`, home `/var/lib/jenkins`, port 8090 (systemd override below) |
+
+### Port
+
+The default port 8080 cannot be reached from Windows on this PC
+(section 3). The port is set in a systemd override, which survives the
+package upgrades:
 
 ```bash
-systemctl is-active jenkins                                   # active
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/login   # 200
+sudo systemctl edit jenkins
 ```
+
+Write these lines between the two `###` comment lines of the editor (text
+below them is discarded):
+
+```ini
+[Service]
+Environment="JENKINS_PORT=8090"
+```
+
+```bash
+sudo systemctl restart jenkins
+systemctl show jenkins -p Environment                         # ... JENKINS_PORT=8090 ...
+systemctl is-active jenkins                                   # active
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8090/login   # 200
+```
+
+The override is stored in `/etc/systemd/system/jenkins.service.d/override.conf`.
+
+### Ubuntu support
+
+Jenkins announces the end of its support for Ubuntu 22.04 on 01/04/2027.
+Upgrading Ubuntu also changes `arm-none-eabi-gcc`, `clang-format` and
+Python, so the developer PC and Jenkins are upgraded together, in a
+dedicated phase, to keep the same binaries and format check on both.
 
 ## 3. Web access from Windows
 
-On this PC another Windows program listens on port 8080:
-`http://localhost:8080` in a Windows browser answers
-`Access Error: 404 -- Not Found`, not Jenkins. Use the WSL address instead:
+On this PC the Windows service `ApplicationWebServer.exe` listens on
+`0.0.0.0:8080`, while the WSL relay `wslrelay.exe` only forwards the IPv6
+loopback `[::1]:8080`. A Windows browser on `http://localhost:8080` reaches
+that service and gets `Access Error: 404 -- Not Found`, not Jenkins. Hence
+the port 8090 of section 2: `http://localhost:8090` works both in Windows
+and in WSL.
 
-```bash
-hostname -I        # first address, e.g. 172.29.48.254
-```
-
-and open `http://<first address>:8080` in Windows. The address may change
-when WSL restarts. Commands run inside WSL (curl, linter) keep using
-`http://localhost:8080`.
-
-To find the Windows program, in PowerShell:
+To find the program that holds a port, in PowerShell:
 
 ```powershell
-netstat -ano | findstr :8080
-tasklist /fi "PID eq <PID>"
+netstat -ano | findstr :8080       # last column: PID, e.g. 9160
+tasklist /fi "PID eq 9160"         # ApplicationWebServer.exe
 ```
+
+*Manage Jenkins → System → Jenkins URL*: `http://localhost:8090/`. The
+warning that this is not a valid host name can be ignored: the URL is only
+used by the browser on this PC and in the links Jenkins writes.
 
 ## 4. Account recovery
 
@@ -111,8 +140,8 @@ user was in neither group.
 
 ```bash
 sudo usermod -aG plugdev,dialout jenkins
-sudo systemctl restart jenkins            # group changes apply to new processes only
-id jenkins                                # ... plugdev ... dialout ...
+sudo systemctl restart jenkins            # after usermod: group changes apply to new processes only
+id jenkins                                # groups=...(jenkins),20(dialout),46(plugdev)
 ```
 
 The board is attached to WSL with `usbipd`, in an administrator PowerShell:
@@ -139,14 +168,14 @@ Only one program may use the serial port: close miniterm before a build.
 | `openocd` | `/usr/bin` | available |
 | `python3` 3.10, `pip` 22.0.2 | `/usr/bin`, system | available |
 | pyserial, PyYAML | `/usr/lib/python3/dist-packages` | available |
-| pytest ≥ 7.0 (`tests/host/hil/pyproject.toml`) | developer's `~/.local` only | **missing** |
+| pytest ≥ 7.0 (`tests/host/hil/pyproject.toml`) | developer's `~/.local` only | **missing** on 03/11/2026; 9.2.0 installed on 04/11/2026 |
 
 The apt package `python3-pytest` of Ubuntu 22.04 is 6.2.5, below the minimum.
 Install pytest in the `jenkins` user's site directory:
 
 ```bash
 sudo -u jenkins -H python3 -m pip install --user "pytest>=7"
-sudo -u jenkins -H python3 -m pytest --version
+sudo -u jenkins -H python3 -m pytest --version             # pytest 9.2.0
 ```
 
 ## 7. Executors
@@ -181,12 +210,13 @@ Create an API token (*user menu → Security → API Token → Add new Token*),
 then, from the repository root:
 
 ```bash
-curl -s -X POST -u zbenakka -F "jenkinsfile=<ci/Jenkinsfile" http://localhost:8080/pipeline-model-converter/validate
+curl -s -X POST -u zbenakka -F "jenkinsfile=<ci/Jenkinsfile" http://localhost:8090/pipeline-model-converter/validate
 ```
 
 Paste the token at the password prompt, so that it does not stay in the
 shell history. Expected: `Jenkinsfile successfully validated.` Revoke the
-token afterwards.
+token afterwards. An `HTTP ERROR 401 Unauthorized` page means that the
+token is revoked or was badly pasted: create a new one.
 
 ## 10. GitHub credential
 
@@ -195,11 +225,20 @@ Fine-grained tokens → Generate new token*:
 
 | Field | Value |
 |:--|:--|
-| Repository access | Only select repositories: `zkariae/stm32f7508-dk-baremetal` |
+| Repository access | Only select repositories: `zkariae/stm32f7508-dk-baremetal`, and no other |
 | Contents | Read-only |
 | Pull requests | Read-only |
 | Commit statuses | Read and write |
 | Metadata | Read-only (added by GitHub) |
+
+Before *Generate token*, the summary must read "4 permissions for 1 of your
+repositories". Without *Pull requests* the scan finds no pull request, and
+without *Commit statuses* Jenkins builds but no check `pr-merge` ever
+appears on GitHub, so the rulesets block every merge.
+
+The token has an expiry date (03/01/2027 for the current one). Once it has
+expired the scans fail; generate a new token and replace the password of
+the credential below before that date.
 
 In Jenkins, *Manage Jenkins → Credentials → System → Global credentials →
 Add Credentials*:
@@ -210,6 +249,7 @@ Add Credentials*:
 | Username | `zkariae` |
 | Password | the fine-grained token |
 | ID | `github-zkariae` |
+| Description | GitHub fine-grained token, stm32f7508-dk-baremetal |
 
 The submodule `stm32f7508-dk` is public; the Jenkinsfile fetches it over
 HTTPS, so it needs no credential.
@@ -220,6 +260,8 @@ HTTPS, so it needs no credential.
 
 | Setting | Value |
 |:--|:--|
+| Display Name | `STM32F7508-DK bare-metal` |
+| Description | Build, UART T1-T8 and HIL tests on the STM32F7508-DK board for every pull request (ci/Jenkinsfile). |
 | Branch Sources | GitHub, credential `github-zkariae`, repository `https://github.com/zkariae/stm32f7508-dk-baremetal` |
 | Discover branches | Exclude branches that are also filed as PRs |
 | Discover pull requests from origin | Merging the pull request with the current target branch revision |
@@ -233,6 +275,11 @@ Pipeline Now*.
 
 The "merging" strategy is what names the commit status of a pull request
 `continuous-integration/jenkins/pr-merge`, the check required in section 12.
+
+Before `phaseD-ci/integration` is pushed, the first scan log reports
+`'ci/Jenkinsfile' not found` for `main` and `develop` and ends with
+`Finished: SUCCESS`: these branches do not hold the Jenkinsfile yet and get
+no job, which is expected.
 
 ## 12. GitHub rulesets (D9)
 
@@ -261,16 +308,55 @@ type the name by hand.
 
 ## 13. Checks
 
-D8, after sections 2 to 11:
+### Pushing from WSL
+
+The pushes are made from the developer's WSL terminal over SSH, with a key
+dedicated to GitHub. A key already registered on another GitHub account is
+refused with "Key is already in use", so a new one is created:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_github -C "<e-mail>"
+cat ~/.ssh/id_ed25519_github.pub          # public key only, to paste on GitHub
+```
+
+GitHub, *Settings → SSH and GPG keys → New SSH key* (here `Lenovo_WSL_Zak`),
+then `~/.ssh/config`:
+
+```text
+Host github.com
+  IdentityFile ~/.ssh/id_ed25519_github
+  IdentitiesOnly yes
+```
+
+```bash
+ssh -T git@github.com                     # Hi zkariae! You've successfully authenticated ...
+```
+
+If the push is refused with `Permission denied (publickey)`, `ssh -vT
+git@github.com` shows which key is offered and whether GitHub accepts it.
+An `Internal Server Error` or authentications refused only from time to
+time come from GitHub itself: check https://www.githubstatus.com (*Git
+Operations*) and push again once the incident is resolved.
+
+### D8, after sections 2 to 11
 
 1. `git push -u origin phaseD-ci/integration`, then *Scan Multibranch
    Pipeline Now*.
 2. The branch build runs Checkout and Build in green; UART T1-T8 and HIL
-   show as skipped; the `.bin` files are archived.
+   show as skipped; the `.bin` files are archived. The console ends with
+   `GitHub has been notified of this commit's build result` and
+   `Finished: SUCCESS`.
 3. On GitHub, the branch's last commit carries the status
    `continuous-integration/jenkins/branch` in green.
 
-D9, after section 12:
+Reached on 04/11/2026 with build #1 of `phaseD-ci/integration`.
+
+### D9, after section 12
 
 1. A direct `git push` to `develop` is refused (without admin bypass).
 2. The end-of-phase checks of `ci/README.md` section 8 (D10).
+
+`main` holds merge commits that `develop` does not have (GitHub shows
+`develop` "behind main"), although both have the same content. Since the
+rulesets require a branch to be up to date with its target, `develop` is
+fast-forwarded to `main` before the pull request `develop` → `main`.
