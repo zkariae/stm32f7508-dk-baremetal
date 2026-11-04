@@ -5,8 +5,8 @@
 \brief      HIL test plan of the STM32F7508-DK project.
 
 \author     Z. BEN-AKKA
-\version    1.2
-\date       03/11/2026
+\version    1.3
+\date       04/11/2026
 
 \details
   Describes the hardware-in-the-loop test bench: principle, layout of the
@@ -21,6 +21,7 @@
 | 1.0     | 13/10/2026 | Z. BEN-AKKA | Initial version. |
 | 1.1     | 23/10/2026 | Z. BEN-AKKA | Show rx_check/ and the shared bench config. |
 | 1.2     | 03/11/2026 | Z. BEN-AKKA | Align the plan with the delivered bench (protocol 1.3, v0.3.0); translate it to English. |
+| 1.3     | 04/11/2026 | Z. BEN-AKKA | Add the CI: ci/ folder, pull request flow and Jenkins archiving. |
 ****************************
 -->
 
@@ -46,6 +47,14 @@ The product applications stay in `dev/`. The validation firmware and the Python 
 ```text
 .
 ├── Makefile                         # Declares the hil-bench image (sources, modules, memory, build ID)
+├── ci/                              # Continuous integration (ci/README.md)
+│   ├── Jenkinsfile                  # Pipeline: Build, then UART T1-T8 and HIL on pull requests
+│   ├── scripts/
+│   │   ├── build.sh                 # Checks without the board: make all, format, unit tests, collection
+│   │   ├── rx_check.sh              # Flashes uart-diag and runs T1 to T8
+│   │   └── hil.sh                   # Runs the pytest suite (flashes hil-bench), JUnit report
+│   └── jenkins/
+│       └── setup.md                 # Jenkins in WSL2, board access, job and GitHub rulesets
 ├── dev/
 │   ├── apps/                        # Existing applications, unchanged
 │   └── common/                      # Drivers shared by the applications and the bench
@@ -148,15 +157,17 @@ Battery ADC and RTC are not in the initial scope: these functions are not among 
 
 ## 5. Git branches and progress
 
-`main` stays stable and only receives tagged versions. Work happens on `develop`: each phase has its integration branch, created from `develop`, and each modified file has its own sub-branch, merged into the phase branch. A finished phase is merged into `develop`, then the branches are deleted. The `stm32f7508-dk/` submodule follows the same principle in its own repository.
+`main` stays stable and only receives tagged versions. Work happens on `develop`: each phase has its integration branch `phaseX/integration`, created from `develop`, and each modified file has its own sub-branch `phaseX/<task>`, merged into the phase branch. A finished phase is merged into `develop`, then the branches are deleted. The phase branch is not named `phaseX`, because Git cannot hold a branch `phaseX` and branches `phaseX/...` at the same time. The `stm32f7508-dk/` submodule follows the same principle in its own repository.
+
+Once the GitHub rulesets are enabled (`ci/README.md` section 3), nothing is pushed directly to `main`, `develop` or `phaseX/integration`: every merge goes through a pull request, merged with "Merge commit" once the Jenkins check `continuous-integration/jenkins/pr-merge` is green.
 
 ```text
 main ──────────────── v0.1.0 ── v0.2.0 ── v0.3.0 ──
                          ▲         ▲         ▲
 develop ─────────────────┴─────────┴─────────┴─────
-   └── phase branch
-         ├── file sub-branch 1
-         └── file sub-branch 2
+   └── phaseX/integration          ──► PR to develop, Jenkins check
+         ├── phaseX/<task 1>       ──► PR to phaseX/integration, Jenkins check
+         └── phaseX/<task 2>       ──► PR to phaseX/integration, Jenkins check
 ```
 
 | Milestone | Content |
@@ -164,6 +175,7 @@ develop ─────────────────┴──────
 | `v0.1.0` | UART reception and tests T1 to T8 (`rx_check`, `uart-diag` image). |
 | `v0.2.0` | `hil-bench` firmware, pytest framework and protocol 1.0 conformance. |
 | `v0.3.0` | Protocol 1.3: LED, QSPI, GPIO and LCD commands with their tests. |
+| Phase D | CI with Jenkins: build and board tests required on every pull request (in progress, `ci/README.md`). |
 | Next | Bootloader and DFU, then campaign automation. |
 
 Order followed: foundation → protocol → firmware and runner → first integrated test → peripherals → bootloaders/DFU. The first integrated test was merged before the campaign was extended to the other functions.
@@ -174,7 +186,9 @@ A campaign follows this cycle: check the bench, build the image, program the tar
 
 Already in place: the serial log and the make output in `work/hil-results/pytest.log`, the JUnit report with `--junitxml`, and the classification of failures with `tests/protocol.md` section 7.3 (programming, start-up, protocol, functional…). Generated outputs go to `work/hil-results/` and are not tracked by Git.
 
-Still to do: archive, for each run, the Git commit, the configuration, the binary, the serial log, the available measurements and the JUnit report.
+On every pull request, Jenkins runs the build, tests T1 to T8 and the HIL suite (`ci/Jenkinsfile`), and archives for each build the binaries, `pytest.log` and `junit.xml`; each build is tied to its Git commit.
+
+Still to do: keep the bench configuration and the available measurements with each run, and `run_hil.py` for a full local campaign in one command.
 
 ## 7. Next step
 
