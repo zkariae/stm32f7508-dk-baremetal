@@ -5,7 +5,7 @@
 \brief      CI/CD of the project: branch protection, Jenkins pipeline and phase D status.
 
 \author     Z. BEN-AKKA
-\version    1.1
+\version    1.2
 \date       04/11/2026
 
 \details
@@ -20,6 +20,7 @@
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 03/11/2026 | Z. BEN-AKKA | Initial version. |
 | 1.1     | 04/11/2026 | Z. BEN-AKKA | Status of D2 to D7; Java 21, web access and Checkout clean-up from the set-up. |
+| 1.2     | 04/11/2026 | Z. BEN-AKKA | Port 8090 and web access through localhost; D8 done. |
 ****************************
 -->
 
@@ -110,11 +111,11 @@ Jenkins on the developer PC (WSL2, Ubuntu 22.04) ── Multibranch job, Script 
 | Choice | Decision | Reason |
 |:--|:--|:--|
 | Jenkins host | Jenkins LTS installed in WSL2 with apt, run by systemd (`systemd=true` in `/etc/wsl.conf`), Java 21 | Same Ubuntu 22.04 as the developer: `arm-none-eabi-gcc` 10.3 and `clang-format` 14 give the same binaries and format check; direct USB access to the board |
-| Web access | `http://<WSL address>:8080` from Windows; `localhost:8080` inside WSL | Port 8080 of Windows is taken on this PC (`ci/jenkins/setup.md` section 3) |
+| Web access | `http://localhost:8090`, from Windows and inside WSL; port set in a systemd override | Port 8080 is taken by a Windows service on this PC and WSL only relays it over IPv6 (`ci/jenkins/setup.md` sections 2 and 3) |
 | Job | Multibranch Pipeline, GitHub Branch Source, Script Path `ci/Jenkinsfile` | All CI files stay in `ci/` |
 | Trigger | Periodic scan of GitHub every 5 minutes, no webhook | WSL2 is not reachable from the Internet; every connection goes out from the PC and no port is exposed. A pull request starts within 5 minutes, or at once with "Scan now" |
 | Result | Status `continuous-integration/jenkins/pr-merge` published by GitHub Branch Source | It is the check required by the rulesets |
-| Credentials | Fine-grained GitHub token, this repository only: Contents read, Pull requests read, Commit statuses write | Least privilege |
+| Credentials | Fine-grained GitHub token, this repository only: Contents read, Pull requests read, Commit statuses write; renewed before it expires (`ci/jenkins/setup.md` section 10) | Least privilege |
 | Fork pull requests | Trust "From users with Admin or Write permission" | The Jenkinsfile of an outside fork never runs on the PC that holds the board |
 | Executors | 1 | One board |
 | Board access | `jenkins` user in the `plugdev` (ST-LINK) and `dialout` (`/dev/ttyACM0`) groups; board attached to WSL with `usbipd` | Same rights as the developer |
@@ -158,9 +159,9 @@ ci/scripts/hil.sh        # board connected, flashes hil-bench
 | D5 | `ci/Jenkinsfile` | done |
 | D6 | `ci/jenkins/setup.md` | done |
 | D7 | `work/doc_zak/plan_test_hil.md` (sections 2, 5 and 6) | done |
-| D8 | Jenkins and `gh` installed by the developer; first green build of `phaseD-ci/integration` | in progress: Jenkins installed; set-up of `ci/jenkins/setup.md` sections 5 to 11 and `gh` to do |
+| D8 | Jenkins installed by the developer; first green build of `phaseD-ci/integration` | done: build #1 of `phaseD-ci/integration` green, status published on GitHub |
 | D9 | The three rulesets enabled by the developer | to do |
-| D10 | PRs `phaseD-ci/integration` → `develop` → `main`, deliberate regressions | to do |
+| D10 | `gh` installed by the developer; PRs `phaseD-ci/integration` → `develop` → `main`, deliberate regressions | to do |
 
 Set-up order:
 
