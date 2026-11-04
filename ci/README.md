@@ -5,8 +5,8 @@
 \brief      CI/CD of the project: branch protection, Jenkins pipeline and phase D status.
 
 \author     Z. BEN-AKKA
-\version    1.0
-\date       03/11/2026
+\version    1.1
+\date       04/11/2026
 
 \details
   Reference document of the CI/CD set up in phase D. It records the branch
@@ -19,6 +19,7 @@
 | Version | Date       | Author      | Description      |
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 03/11/2026 | Z. BEN-AKKA | Initial version. |
+| 1.1     | 04/11/2026 | Z. BEN-AKKA | Status of D2 to D7; Java 21, web access and Checkout clean-up from the set-up. |
 ****************************
 -->
 
@@ -83,7 +84,7 @@ what triggered the build.
 
 | Stage | Script | Content |
 |:--|:--|:--|
-| Checkout | in the Jenkinsfile | Repository, then the submodule over HTTPS: `git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init` (the submodule is public, no key needed) |
+| Checkout | in the Jenkinsfile | Repository, then the submodule over HTTPS: `git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init` (the submodule is public, no key needed), then removes `work/hil-results/`, so that a build never reports the previous build's tests |
 | Build | `ci/scripts/build.sh` | `make all`, `dev/scripts/format_cxx.sh --check`, `pytest -m unit`, `pytest --collect-only` |
 | UART T1–T8 | `ci/scripts/rx_check.sh` | `make uart-diag-flash`, `make reset`, `tests/host/rx_check/uart_rx_check.py` |
 | HIL | `ci/scripts/hil.sh` | `python3 -m pytest tests/host/hil --junitxml=work/hil-results/junit.xml` (flashes hil-bench) |
@@ -108,7 +109,8 @@ Jenkins on the developer PC (WSL2, Ubuntu 22.04) ── Multibranch job, Script 
 
 | Choice | Decision | Reason |
 |:--|:--|:--|
-| Jenkins host | Jenkins LTS installed in WSL2 with apt, run by systemd (`systemd=true` in `/etc/wsl.conf`), Java 17 | Same Ubuntu 22.04 as the developer: `arm-none-eabi-gcc` 10.3 and `clang-format` 14 give the same binaries and format check; direct USB access to the board |
+| Jenkins host | Jenkins LTS installed in WSL2 with apt, run by systemd (`systemd=true` in `/etc/wsl.conf`), Java 21 | Same Ubuntu 22.04 as the developer: `arm-none-eabi-gcc` 10.3 and `clang-format` 14 give the same binaries and format check; direct USB access to the board |
+| Web access | `http://<WSL address>:8080` from Windows; `localhost:8080` inside WSL | Port 8080 of Windows is taken on this PC (`ci/jenkins/setup.md` section 3) |
 | Job | Multibranch Pipeline, GitHub Branch Source, Script Path `ci/Jenkinsfile` | All CI files stay in `ci/` |
 | Trigger | Periodic scan of GitHub every 5 minutes, no webhook | WSL2 is not reachable from the Internet; every connection goes out from the PC and no port is exposed. A pull request starts within 5 minutes, or at once with "Scan now" |
 | Result | Status `continuous-integration/jenkins/pr-merge` published by GitHub Branch Source | It is the check required by the rulesets |
@@ -123,13 +125,13 @@ Jenkins on the developer PC (WSL2, Ubuntu 22.04) ── Multibranch job, Script 
 ```text
 ci/
 ├── README.md              # this document
-├── Jenkinsfile            # declarative pipeline (planned)
+├── Jenkinsfile            # declarative pipeline
 ├── scripts/
-│   ├── build.sh           # checks without the board (planned)
-│   ├── rx_check.sh        # UART T1–T8 on the board, uart-diag image (planned)
-│   └── hil.sh             # HIL tests on the board, hil-bench image (planned)
+│   ├── build.sh           # checks without the board
+│   ├── rx_check.sh        # UART T1–T8 on the board, uart-diag image
+│   └── hil.sh             # HIL tests on the board, hil-bench image
 └── jenkins/
-    └── setup.md           # Jenkins in WSL2, plugins, credentials, job, GitHub rulesets (planned)
+    └── setup.md           # Jenkins in WSL2, plugins, credentials, job, GitHub rulesets
 ```
 
 The scripts run from the repository root and return the exit code of the
@@ -137,7 +139,7 @@ checks they run, so Jenkins and a developer get the same result.
 
 ## 7. Running the checks locally
 
-The same scripts run by hand, before pushing a branch (planned, D2 to D4):
+The same scripts run by hand, before pushing a branch:
 
 ```bash
 ci/scripts/build.sh      # no board needed
@@ -150,13 +152,13 @@ ci/scripts/hil.sh        # board connected, flashes hil-bench
 | # | File or action | Status |
 |:-:|:--|:--|
 | D1 | `ci/README.md` | done |
-| D2 | `ci/scripts/build.sh` | to do |
-| D3 | `ci/scripts/rx_check.sh` | to do |
-| D4 | `ci/scripts/hil.sh` | to do |
-| D5 | `ci/Jenkinsfile` | to do |
-| D6 | `ci/jenkins/setup.md` | to do |
-| D7 | `work/doc_zak/plan_test_hil.md` (sections 2, 5 and 6) | to do |
-| D8 | Jenkins and `gh` installed by the developer; first green build of `phaseD-ci/integration` | to do |
+| D2 | `ci/scripts/build.sh` | done |
+| D3 | `ci/scripts/rx_check.sh` | done |
+| D4 | `ci/scripts/hil.sh` | done |
+| D5 | `ci/Jenkinsfile` | done |
+| D6 | `ci/jenkins/setup.md` | done |
+| D7 | `work/doc_zak/plan_test_hil.md` (sections 2, 5 and 6) | done |
+| D8 | Jenkins and `gh` installed by the developer; first green build of `phaseD-ci/integration` | in progress: Jenkins installed; set-up of `ci/jenkins/setup.md` sections 5 to 11 and `gh` to do |
 | D9 | The three rulesets enabled by the developer | to do |
 | D10 | PRs `phaseD-ci/integration` → `develop` → `main`, deliberate regressions | to do |
 
