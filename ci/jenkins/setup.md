@@ -5,7 +5,7 @@
 \brief      Set-up of Jenkins in WSL2, of its access to the board and of the GitHub rulesets.
 
 \author     Z. BEN-AKKA
-\version    1.1
+\version    1.2
 \date       04/11/2026
 
 \details
@@ -21,6 +21,7 @@
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 04/11/2026 | Z. BEN-AKKA | Initial version. |
 | 1.1     | 04/11/2026 | Z. BEN-AKKA | Port 8090, Windows port conflict, token and SSH key findings from D8. |
+| 1.2     | 04/11/2026 | Z. BEN-AKKA | Admin bypass for pull requests only; develop brought up to date before the rulesets. |
 ****************************
 -->
 
@@ -297,14 +298,19 @@ Same settings for the three:
 | Setting | Value |
 |:--|:--|
 | Enforcement status | Active |
-| Bypass list | Repository admin, always allow |
+| Bypass list | Repository admin, For pull requests only |
 | Require a pull request before merging | yes, required approvals 0, allowed merge methods: Merge |
 | Require status checks to pass | yes, *Require branches to be up to date before merging*, check `continuous-integration/jenkins/pr-merge` |
 | Block force pushes | yes |
 
+With the bypass mode "Always allow", the admin could still push directly
+to a protected branch, past every rule. "For pull requests only" refuses
+every direct push, the admin's included; the admin can only merge a pull
+request without its check, for an emergency.
+
 The check name can only be picked from the list once Jenkins has published
-it at least once: enable the rulesets after the first pull request build, or
-type the name by hand.
+it at least once. The rulesets were created before any pull request build,
+so the name was typed by hand.
 
 ## 13. Checks
 
@@ -353,10 +359,22 @@ Reached on 04/11/2026 with build #1 of `phaseD-ci/integration`.
 
 ### D9, after section 12
 
-1. A direct `git push` to `develop` is refused (without admin bypass).
+1. A direct `git push` to `develop` is refused, also for the admin.
 2. The end-of-phase checks of `ci/README.md` section 8 (D10).
 
-`main` holds merge commits that `develop` does not have (GitHub shows
-`develop` "behind main"), although both have the same content. Since the
-rulesets require a branch to be up to date with its target, `develop` is
-fast-forwarded to `main` before the pull request `develop` → `main`.
+`main` held merge commits that `develop` did not have (GitHub showed
+`develop` "behind main"), although both had the same content. Since the
+rulesets require a branch to be up to date with its target, and a direct
+push is refused once they are active, both branches were brought up to date
+on 04/11/2026, before the rulesets:
+
+```bash
+git push origin main:develop                  # fast-forward, no force push
+git branch -f develop main                    # same for the local branch
+git checkout phaseD-ci/integration
+git merge --no-ff develop -m "Merge develop"  # no file changes
+git push origin phaseD-ci/integration
+```
+
+The pull requests `phaseD-ci/integration` → `develop` and `develop` →
+`main` of D10 are then up to date with their target.
