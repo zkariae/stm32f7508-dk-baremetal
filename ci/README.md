@@ -5,7 +5,7 @@
 \brief      CI/CD of the project: branch protection, Jenkins pipeline and phase D status.
 
 \author     Z. BEN-AKKA
-\version    1.2
+\version    1.3
 \date       04/11/2026
 
 \details
@@ -21,6 +21,7 @@
 | 1.0     | 03/11/2026 | Z. BEN-AKKA | Initial version. |
 | 1.1     | 04/11/2026 | Z. BEN-AKKA | Status of D2 to D7; Java 21, web access and Checkout clean-up from the set-up. |
 | 1.2     | 04/11/2026 | Z. BEN-AKKA | Port 8090 and web access through localhost; D8 done. |
+| 1.3     | 04/11/2026 | Z. BEN-AKKA | Admin bypass for pull requests only. |
 ****************************
 -->
 
@@ -43,9 +44,9 @@ phaseX/integration      ◄── PR ── phaseX/<task>           one file per
 
 | Branch | Role | Receives | Direct push | Deletion |
 |:--|:--|:--|:--|:--|
-| `main` | Released versions, tagged | PRs from `develop` | blocked (admin bypass) | blocked |
-| `develop` | Integration of the finished phases | PRs from `phaseX/integration` | blocked (admin bypass) | blocked |
-| `phaseX/integration` | Integration branch of one phase, created from `develop` | PRs from `phaseX/<task>` | blocked (admin bypass) | allowed, deleted at the end of the phase |
+| `main` | Released versions, tagged | PRs from `develop` | blocked, also for the admin | blocked |
+| `develop` | Integration of the finished phases | PRs from `phaseX/integration` | blocked, also for the admin | blocked |
+| `phaseX/integration` | Integration branch of one phase, created from `develop` | PRs from `phaseX/<task>` | blocked, also for the admin | allowed, deleted at the end of the phase |
 | `phaseX/<task>` | One change to one file, created from `phaseX/integration` | — | free | free |
 
 The phase branch is named `phaseX/integration`, not `phaseX`: Git cannot
@@ -71,7 +72,9 @@ Common rules:
 - Allowed merge method: "Merge commit" only, the GitHub equivalent of
   `git merge --no-ff`, which keeps the current history shape.
 - Force pushes are blocked.
-- Bypass: the *Repository admin* role only, for emergencies.
+- Bypass: the *Repository admin* role, *For pull requests only*: every
+  direct push is refused, the admin's included; the admin may only merge a
+  pull request without its check, for an emergency.
 
 ## 4. Pipeline
 
@@ -183,7 +186,7 @@ End-of-phase checks (D10):
    is blocked.
 4. The PRs `phaseD-ci/integration` → `develop` and `develop` → `main` are
    green, with T1–T8 8/8 and 216 HIL tests passed, and can be merged.
-5. A direct `git push` to `develop` or `main` is refused (without admin bypass).
+5. A direct `git push` to `develop` or `main` is refused, also for the admin.
 
 ## 9. Working rules
 
