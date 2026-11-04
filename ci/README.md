@@ -5,7 +5,7 @@
 \brief      CI/CD of the project: branch protection, Jenkins pipeline and phase D status.
 
 \author     Z. BEN-AKKA
-\version    1.3
+\version    1.4
 \date       04/11/2026
 
 \details
@@ -22,6 +22,7 @@
 | 1.1     | 04/11/2026 | Z. BEN-AKKA | Status of D2 to D7; Java 21, web access and Checkout clean-up from the set-up. |
 | 1.2     | 04/11/2026 | Z. BEN-AKKA | Port 8090 and web access through localhost; D8 done. |
 | 1.3     | 04/11/2026 | Z. BEN-AKKA | Admin bypass for pull requests only. |
+| 1.4     | 04/11/2026 | Z. BEN-AKKA | D9 done. |
 ****************************
 -->
 
@@ -163,8 +164,8 @@ ci/scripts/hil.sh        # board connected, flashes hil-bench
 | D6 | `ci/jenkins/setup.md` | done |
 | D7 | `work/doc_zak/plan_test_hil.md` (sections 2, 5 and 6) | done |
 | D8 | Jenkins installed by the developer; first green build of `phaseD-ci/integration` | done: build #1 of `phaseD-ci/integration` green, status published on GitHub |
-| D9 | The three rulesets enabled by the developer | to do |
-| D10 | `gh` installed by the developer; PRs `phaseD-ci/integration` → `develop` → `main`, deliberate regressions | to do |
+| D9 | The three rulesets enabled by the developer | done: the three rulesets active, admin bypass for pull requests only |
+| D10 | `gh` installed by the developer; PRs `phaseD-ci/integration` → `develop` → `main`, deliberate regressions | in progress |
 
 Set-up order:
 
