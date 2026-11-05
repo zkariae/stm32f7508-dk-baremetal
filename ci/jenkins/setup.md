@@ -5,8 +5,8 @@
 \brief      Set-up of Jenkins in WSL2, of its access to the board and of the GitHub rulesets.
 
 \author     Z. BEN-AKKA
-\version    1.2
-\date       04/11/2026
+\version    1.3
+\date       05/11/2026
 
 \details
   Step-by-step procedure of phase D sub-steps D8 and D9 (ci/README.md
@@ -22,6 +22,7 @@
 | 1.0     | 04/11/2026 | Z. BEN-AKKA | Initial version. |
 | 1.1     | 04/11/2026 | Z. BEN-AKKA | Port 8090, Windows port conflict, token and SSH key findings from D8. |
 | 1.2     | 04/11/2026 | Z. BEN-AKKA | Admin bypass for pull requests only; develop brought up to date before the rulesets. |
+| 1.3     | 05/11/2026 | Z. BEN-AKKA | Required check is pr-merge, not branch; how to diagnose a blocked pull request. |
 ****************************
 -->
 
@@ -308,9 +309,21 @@ to a protected branch, past every rule. "For pull requests only" refuses
 every direct push, the admin's included; the admin can only merge a pull
 request without its check, for an emergency.
 
-The check name can only be picked from the list once Jenkins has published
-it at least once. The rulesets were created before any pull request build,
-so the name was typed by hand.
+A check name can only be picked from the list once Jenkins has published it
+at least once. Before the first pull request build, the list only offers
+`continuous-integration/jenkins/branch`: do not pick it, type
+`continuous-integration/jenkins/pr-merge` by hand. The `branch` check is
+never published on a pull request (branches filed as PRs are excluded from
+the job, section 11) and only covers the Build stage. Symptom of this
+mistake: the pull request stays on "Expected — Waiting for status to be
+reported", with *Merge pull request* disabled.
+
+To read the check that a ruleset really requires:
+
+```bash
+gh api repos/zkariae/stm32f7508-dk-baremetal/rulesets                  # id of each ruleset
+gh api repos/zkariae/stm32f7508-dk-baremetal/rulesets/<id> --jq '.rules'
+```
 
 ## 13. Checks
 
