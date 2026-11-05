@@ -52,5 +52,5 @@ void LedOff(const Led *led)
 
 void LedToggle(const Led *led)
 {
-  GpioToggle(led->port, led->pin);
+  GpioToggle(led->port, led->pin)
 }
