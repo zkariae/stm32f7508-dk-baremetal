@@ -25,7 +25,7 @@ COMMANDS = [
     "LCD_LAYER", "LCD_SCAN", "LCD_FILL", "LCD_PIXEL",
 ]
 
-QSPI_JEDEC_ID = 0x0018BA20      # N25Q128A, protocol.md section 6.7
+QSPI_JEDEC_ID = 0x0018BA21     # N25Q128A, protocol.md section 6.7
 QSPI_FLASH_SIZE = 0x01000000    # 16 MB
 QSPI_TEST_START = 0x00FF0000    # Test area, section 6.6
 QSPI_TEST_END = 0x01000000      # Excluded
