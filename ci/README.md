@@ -5,8 +5,8 @@
 \brief      CI/CD of the project: branch protection, Jenkins pipeline and phase D status.
 
 \author     Z. BEN-AKKA
-\version    1.4
-\date       04/11/2026
+\version    1.5
+\date       05/11/2026
 
 \details
   Reference document of the CI/CD set up in phase D. It records the branch
@@ -23,6 +23,7 @@
 | 1.2     | 04/11/2026 | Z. BEN-AKKA | Port 8090 and web access through localhost; D8 done. |
 | 1.3     | 04/11/2026 | Z. BEN-AKKA | Admin bypass for pull requests only. |
 | 1.4     | 04/11/2026 | Z. BEN-AKKA | D9 done. |
+| 1.5     | 05/11/2026 | Z. BEN-AKKA | D10 checks 1, 2, 3 and 5 passed. |
 ****************************
 -->
 
@@ -165,7 +166,7 @@ ci/scripts/hil.sh        # board connected, flashes hil-bench
 | D7 | `work/doc_zak/plan_test_hil.md` (sections 2, 5 and 6) | done |
 | D8 | Jenkins installed by the developer; first green build of `phaseD-ci/integration` | done: build #1 of `phaseD-ci/integration` green, status published on GitHub |
 | D9 | The three rulesets enabled by the developer | done: the three rulesets active, admin bypass for pull requests only |
-| D10 | `gh` installed by the developer; PRs `phaseD-ci/integration` → `develop` → `main`, deliberate regressions | in progress |
+| D10 | `gh` installed by the developer; PRs `phaseD-ci/integration` → `develop` → `main`, deliberate regressions | done: checks 1, 2, 3 and 5 passed (PR #1 merged, PRs #2 and #3 blocked, direct pushes refused); check 4 is the pull requests that carry this line to `develop` and `main`, which cannot merge unless green |
 
 Set-up order:
 
