@@ -22,11 +22,12 @@ hidden. Quit detaches the handler and stops the session, which frees the
 port. The session factory is a parameter, so tests run the application on
 the fake firmware.
 
-Version: 1.0
+Version: 1.1
 Date: 09/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  09/11/2026  Initial version.
+  1.1  09/11/2026  Disconnect on ctrl+b and quit on ctrl+l: the VS Code terminal keeps ctrl+g and ctrl+q.
 """
 
 import time
@@ -104,13 +105,14 @@ class HilApp(App):
     CommandsPane { height: 1fr; }
     Monitor { height: 40%; }
     """
-    # The VS Code terminal keeps F5 (debug) and F6 (focus): each action also has a ctrl key no field uses
+    # The VS Code terminal keeps F5 (debug), F6 (focus), ctrl+g (go to line) and ctrl+q (quit):
+    # each action also has a ctrl key that reaches the application there and that no field uses
     BINDINGS = [
         Binding("f2,ctrl+t", "toggle_monitor", "Monitor", key_display="F2/^T"),
         Binding("f5,ctrl+n", "connect", "Connect", key_display="F5/^N"),
-        Binding("f6,ctrl+g", "disconnect", "Disconnect", key_display="F6/^G"),
+        Binding("f6,ctrl+b", "disconnect", "Disconnect", key_display="F6/^B"),
         Binding("f7,ctrl+r", "recover", "Recover", key_display="F7/^R"),
-        Binding("ctrl+q", "quit", "Quit"),
+        Binding("ctrl+q,ctrl+l", "quit", "Quit", key_display="^Q/^L", priority=True),
     ]
 
     def __init__(self, bench: dict, catalog: Catalog, session_factory=Session, port: str | None = None):
