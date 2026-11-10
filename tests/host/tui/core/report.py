@@ -15,8 +15,10 @@ and for each failure the last request and the records received for it
   - run.json gives the kind, the selection, the commit and the verdict. A
     run killed before its end has no verdict there: the report is then
     rebuilt from events.jsonl and marked INTERRUPTED, never PASS.
-  - A test started without any report did not run to its end: it is listed
-    as not finished and not counted.
+  - A test without a counted report (a call, or a setup or teardown that
+    did not pass, as Totals counts) did not run to its end, e.g. killed
+    after its setup: it is listed as not finished, never PASS, and not
+    counted.
   - The last request of a failure is its last TX line, with the RX lines
     after it; a scenario step has no TX line in events.jsonl, its label is
     the request.
@@ -31,11 +33,12 @@ Command line, for a run killed with the TUI (no port, no board):
 
 No Textual import.
 
-Version: 1.0
+Version: 1.1
 Date: 10/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  10/11/2026  Initial version.
+  1.1  10/11/2026  Fix a test killed after its setup shown as PASS: finished only with a counted report.
 """
 
 import argparse
@@ -187,8 +190,10 @@ def _read_events(path: Path, bad_lines: list) -> list:
 
 
 def _add_phase(test: TestLine, event: dict) -> None:
-    test.finished = True
     test.duration += float(event.get("duration") or 0.0)
+    if event.get("when") != "call" and event.get("outcome") == "passed":
+        return  # A passed setup or teardown is not counted (Totals): killed after its setup, a test is not finished
+    test.finished = True
     outcome = str(event.get("hil_outcome") or "BENCH_ERROR")
     # The first failed phase decides; a skip only replaces a pass
     message = str(event.get("message") or "")
