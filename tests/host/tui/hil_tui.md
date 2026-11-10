@@ -5,7 +5,7 @@
 \brief      Commands and keys of the HIL bench TUI, and its pytest event stream.
 
 \author     Z. BEN-AKKA
-\version    1.2
+\version    1.3
 \date       10/11/2026
 
 \section tui_hil_tui_md_version_history Version history
@@ -14,6 +14,7 @@
 | 1.0     | 09/11/2026 | Z. BEN-AKKA | Initial version. |
 | 1.1     | 09/11/2026 | Z. BEN-AKKA | Add the event stream of the hil_events pytest plugin. |
 | 1.2     | 10/11/2026 | Z. BEN-AKKA | Fix the JUnit counting rule: a call and teardown failure counts once in tests. |
+| 1.3     | 10/11/2026 | Z. BEN-AKKA | Add the Tests tab: keys, runs and the board state after a run. |
 ****************************
 -->
 
@@ -45,11 +46,39 @@ catalogue is invalid. Install Textual with
 | F6 or ctrl+b | Disconnect: closes the port, no reset |
 | F7 or ctrl+r | Recover after a lost session or an unknown image |
 | F2 or ctrl+t | Shows or hides the monitor |
-| ctrl+q or ctrl+l | Quit and free the port |
+| F3 or ctrl+o | Switches between the Commands and Tests tabs |
+| ctrl+q or ctrl+l | Quit and free the port; during a run, asks first |
 | Enter in a field | Sends the command, as the Send button does |
+| Space in the test tree | Marks or unmarks a test, a file or a family |
+| Enter in the test tree | Opens or closes a node |
 | Escape in a confirmation | Answers No |
 
 The VS Code terminal keeps F5, F6 and ctrl+q: use the ctrl keys there.
+
+## Tests tab
+
+The tree lists the pytest files and tests of `tests/host/hil`, T1-T8 of
+`uart_rx.yaml` and the scenarios of `tests/host/tui/scenarios/`, read again on
+Refresh. A run covers one family; "Will run" shows what Run starts.
+
+| Selection | Run |
+|:--|:--|
+| The whole pytest family | The whole suite |
+| A file, or some tests | Those files and tests |
+| T7 | T3 to T7: T7 needs T3 to T6 |
+| One scenario | Its steps in the open session: Connect first |
+
+| During and after a run | Behaviour |
+|:--|:--|
+| Start (pytest, T1-T8) | The TUI closes the port, the run opens it |
+| Live | Counters, current test, one line per test, TX and RX in the monitor (5 updates per second) |
+| Stop | SIGINT to the run; during a flash it waits for the flash end, a second Stop kills it at once |
+| End of a pytest run | The TUI connects again |
+| End of T1-T8, or a Stop forced during a flash | `UNKNOWN_IMAGE`; the TUI offers to flash hil-bench, then connects |
+| Scenario prompt | Yes or No; a No fails the step, the next steps still run |
+
+Each run has its own folder `work/hil-results/<date-time>-<suite>/` with
+`events.jsonl`, `run.json` and, for pytest, `junit.xml` and `pytest.log`.
 
 ## Event stream (plugins/hil_events.py)
 
