@@ -5,14 +5,15 @@
 \brief      Commands and keys of the HIL bench TUI, and its pytest event stream.
 
 \author     Z. BEN-AKKA
-\version    1.1
-\date       09/11/2026
+\version    1.2
+\date       10/11/2026
 
 \section tui_hil_tui_md_version_history Version history
 | Version | Date       | Author      | Description      |
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 09/11/2026 | Z. BEN-AKKA | Initial version. |
 | 1.1     | 09/11/2026 | Z. BEN-AKKA | Add the event stream of the hil_events pytest plugin. |
+| 1.2     | 10/11/2026 | Z. BEN-AKKA | Fix the JUnit counting rule: a call and teardown failure counts once in tests. |
 ****************************
 -->
 
@@ -86,7 +87,9 @@ every line written so far. Each line has `t` (epoch seconds) and `event`:
 | Any other exception | `BENCH_ERROR` |
 
 The plugin does not count. To get the `junit.xml` totals, count the `report`
-lines as JUnit does: a failed `call` is a failure, a failed `setup` or
-`teardown` an error, a skip or an xfail skipped; a test that fails in `call`
-and in `teardown` counts as two test cases. A write error never fails the
-tests: one line on stderr, then the stream stops.
+lines as pytest does: a passed `call` is passed, a failed `call` a failure, a
+failed `setup` or `teardown` an error, a skip or an xfail skipped. The
+`tests` attribute is their sum, less one for each test that fails in `call`
+and in `teardown`: `junit.xml` writes two test cases for it but counts it
+once. `core/runner.py` counts this way. A write error never fails the tests:
+one line on stderr, then the stream stops.
