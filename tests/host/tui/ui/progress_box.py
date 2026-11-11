@@ -15,7 +15,8 @@ auto_close the box closes itself that many seconds after the last update;
 without it the box stays until Escape or Enter ("Esc: close" in the bottom
 border). A box covered by another screen (a Yes or No question) waits until
 it is on top again before it closes, since Textual always dismisses the top
-screen.
+screen. On top means the top screen of the application: Screen.is_current is
+also true for a screen seen under a modal one, so it cannot tell.
 
 A modal screen stops the bindings of the application. keys lists those that
 must still work under the box, as bindings to application actions
@@ -25,11 +26,12 @@ The text uses the terminal font, so the box keeps the fixed-width look of
 dialog(1). The colours come from the theme ($surface, $primary,
 $block-cursor-foreground); the bevel uses fixed light and dark greys.
 
-Version: 1.0
+Version: 1.1
 Date: 11/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  11/11/2026  Initial version.
+  1.1  11/11/2026  Close only when the box is the top screen: is_current is also true under a modal.
 """
 
 from collections.abc import Iterable
@@ -165,12 +167,15 @@ class ProgressBox(ModalScreen[None]):
         if self.auto_close is not None:
             self._close_timer = self.set_timer(self.auto_close, self._close_when_on_top)
 
+    def _on_top(self) -> bool:
+        return self.app.screen is self  # Not is_current: also true under a modal screen
+
     def _close_when_on_top(self) -> None:
-        if self.is_current:
+        if self._on_top():
             self.dismiss()
         else:  # A question covers the box: Textual would dismiss that one
             self._close_timer = self.set_timer(CLOSE_RETRY, self._close_when_on_top)
 
     def action_close(self) -> None:
-        if self.is_current:
+        if self._on_top():
             self.dismiss()
