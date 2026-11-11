@@ -37,6 +37,12 @@ connects. Quitting during a run asks first, stops the run (a flash still
 ends first; a second Quit forces it) and waits for its end, so no process of
 the group is left behind.
 
+Export (C4) writes report.md and report.html of the last run in its folder
+(core/report.py), in a thread. It is grey until a run ends, then active
+whatever the verdict, INTERRUPTED after a Stop included, and grey again while
+a run or an export is on its way. The report is written only on request; the
+report of a run killed with the TUI is rebuilt on the command line.
+
 The monitor is shown by default; F2 hides it and the tabs take the whole
 height. Each F key also has a ctrl key, since the VS Code terminal keeps F5
 and F6 for itself. Its handler stays attached, so lines keep arriving while
@@ -44,19 +50,21 @@ it is hidden. Quit detaches the handler and stops the session, which frees
 the port. The session and run factories are parameters, so tests run the
 application on the fake firmware and on fake runs.
 
-Version: 1.2
-Date: 10/11/2026
+Version: 1.3
+Date: 11/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  09/11/2026  Initial version.
   1.1  09/11/2026  Disconnect on ctrl+b and quit on ctrl+l: the VS Code terminal keeps ctrl+g and ctrl+q.
   1.2  10/11/2026  Tests tab: run pytest, T1-T8 and the scenarios with live display, the board state after.
+  1.3  11/11/2026  Export the report of the last run, in a worker, from the Export button, F4 or ctrl+y.
 """
 
 import collections
 import re
 import threading
 import time
+from pathlib import Path
 
 from rich.text import Text
 from textual import on
@@ -68,6 +76,7 @@ from textual.widgets import Button, Footer, Label, Static, TabbedContent, TabPan
 
 from adapters.board import parse_banner  # tests/host/hil is on the path once core.session is imported
 from adapters.outcomes import HilOutcome
+from core import report
 from core.catalog import Catalog
 from core.runner import RESULTS, Run
 from core.scenario import ScenarioError, load as load_scenario
@@ -209,6 +218,7 @@ class HilApp(App):
     BINDINGS = [
         Binding("f2,ctrl+t", "toggle_monitor", "Monitor", key_display="F2/^T"),
         Binding("f3,ctrl+o", "switch_tab", "Tab", key_display="F3/^O"),
+        Binding("f4,ctrl+y", "export", "Export", key_display="F4/^Y"),
         Binding("f5,ctrl+n", "connect", "Connect", key_display="F5/^N"),
         Binding("f6,ctrl+b", "disconnect", "Disconnect", key_display="F6/^B"),
         Binding("f7,ctrl+r", "recover", "Recover", key_display="F7/^R"),
@@ -238,6 +248,8 @@ class HilApp(App):
         self.quitting = False
         self.discovered = False
         self.run_events = collections.deque()  # Run events waiting for the next refresh
+        self.last_folder = None  # Folder of the last finished run: what Export writes the report of
+        self.exporting = False
 
     def compose(self) -> ComposeResult:
         yield Static(id="status")
@@ -245,6 +257,7 @@ class HilApp(App):
             yield Button("Connect", id="connect", compact=True)
             yield Button("Disconnect", id="disconnect", compact=True)
             yield Button("Recover", id="recover", compact=True)
+            yield Button("Export", id="export", compact=True)
             yield Static(id="message")
         with TabbedContent(id="tabs"):
             with TabPane("Commands", id=TAB_COMMANDS):
@@ -288,6 +301,12 @@ class HilApp(App):
     def busy(self) -> bool:
         """A run, a run waiting for the port, or a flash of hil-bench is in progress."""
         return self.active_run is not None or self.pending_run is not None or self.flashing
+
+    @property
+    def can_export(self) -> bool:
+        """A run has ended, no other one is on its way and no export is being written (C4)."""
+        return (self.last_folder is not None and self.active_run is None and self.pending_run is None
+                and not self.exporting)
 
     # Session events, called from the session thread
 
@@ -384,6 +403,7 @@ class HilApp(App):
         self.query_one("#connect", Button).disabled = busy or state not in CONNECT_STATES
         self.query_one("#disconnect", Button).disabled = busy or state in (State.DISCONNECTED, State.RUNNING)
         self.query_one("#recover", Button).disabled = busy or state not in RECOVER_STATES
+        self.query_one("#export", Button).disabled = not self.can_export
         self.pane.set_enabled(state is State.CONNECTED and not busy)
         self.tests.set_enabled(not busy and state is not State.CONNECTING and not self.quitting)
 
@@ -536,6 +556,9 @@ class HilApp(App):
         run, self.active_run, self.link = self.active_run, None, None
         self.tests.set_running(False)
         verdict = event.get("verdict")
+        folder = event.get("folder") or (run.folder if run is not None else None)
+        if folder:
+            self.last_folder = Path(folder)  # Export is active whatever the verdict, INTERRUPTED included
         if self.quitting:
             self._leave()
             return
@@ -592,6 +615,33 @@ class HilApp(App):
     def action_recover(self) -> None:
         if not self.busy and self.session.state in RECOVER_STATES:
             self.session.recover()
+
+    @on(Button.Pressed, "#export")
+    def action_export(self) -> None:
+        """Write report.md and report.html of the last run, in a thread: a full suite takes a moment (C6)."""
+        if not self.can_export:
+            return
+        self.exporting = True
+        self._say(f"Writing the report of {self.last_folder.name}...")
+        self.run_worker(lambda: self._export_job(self.last_folder), thread=True, exclusive=True, group="export")
+
+    def _export_job(self, folder: Path) -> None:
+        try:
+            markdown, _ = report.export(folder)
+            error = None
+        except Exception as failure:  # ReportError, OSError: the folder was removed or is not writable
+            markdown, error = None, str(failure)
+        try:
+            self.call_from_thread(self._exported, folder, markdown, error)
+        except RuntimeError:  # The application has already stopped
+            pass
+
+    def _exported(self, folder: Path, markdown: Path | None, error: str | None) -> None:
+        self.exporting = False
+        if error is not None:
+            self._say(f"Report not written: {error}", "bold red")
+        else:
+            self._say(f"Report written: {markdown.parent}/report.md and report.html", "green")
 
     def action_toggle_monitor(self) -> None:
         """Show or hide the monitor; lines keep arriving while it is hidden."""

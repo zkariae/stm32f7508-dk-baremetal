@@ -5,7 +5,7 @@
 \brief      Commands and keys of the HIL bench TUI, and its pytest event stream.
 
 \author     Z. BEN-AKKA
-\version    1.4
+\version    1.5
 \date       11/11/2026
 
 \section tui_hil_tui_md_version_history Version history
@@ -16,6 +16,7 @@
 | 1.2     | 10/11/2026 | Z. BEN-AKKA | Fix the JUnit counting rule: a call and teardown failure counts once in tests. |
 | 1.3     | 10/11/2026 | Z. BEN-AKKA | Add the Tests tab: keys, runs and the board state after a run. |
 | 1.4     | 11/11/2026 | Z. BEN-AKKA | Fix the JUnit counting rule of a teardown error: it changed in pytest 9.1. |
+| 1.5     | 11/11/2026 | Z. BEN-AKKA | Add the Export key and the report of a run. |
 ****************************
 -->
 
@@ -48,6 +49,7 @@ catalogue is invalid. Install Textual with
 | F7 or ctrl+r | Recover after a lost session or an unknown image |
 | F2 or ctrl+t | Shows or hides the monitor |
 | F3 or ctrl+o | Switches between the Commands and Tests tabs |
+| F4 or ctrl+y | Export: writes the report of the last run |
 | ctrl+q or ctrl+l | Quit and free the port; during a run, asks first |
 | Enter in a field | Sends the command, as the Send button does |
 | Space in the test tree | Marks or unmarks a test, a file or a family |
@@ -80,6 +82,26 @@ Refresh. A run covers one family; "Will run" shows what Run starts.
 
 Each run has its own folder `work/hil-results/<date-time>-<suite>/` with
 `events.jsonl`, `run.json` and, for pytest, `junit.xml` and `pytest.log`.
+
+## Report
+
+Export is grey until a run ends. It is then active whatever the verdict,
+`INTERRUPTED` after a Stop included, and grey again during the next run. It
+writes `report.md` and `report.html` in the folder of the last run; the
+message line gives their path. The report holds the verdict, the totals, one
+line per test with its outcome (`tests/protocol.md` section 7.3), the banner,
+the Git commit, the timeouts that differ from section 8.1 and, for each
+failure, the last request and the records received for it.
+
+After a run killed with the TUI, rebuild the report from `events.jsonl`:
+
+```bash
+python3 tests/host/tui/core/report.py work/hil-results/<date-time>-<suite>
+```
+
+The report is then `INTERRUPTED` and counts only the tests that ran. Open the
+page from WSL with
+`explorer.exe "$(wslpath -w work/hil-results/<date-time>-<suite>/report.html)"`.
 
 ## Event stream (plugins/hil_events.py)
 
