@@ -27,8 +27,10 @@ the board is then unknown. A scenario stops before its next step.
 
 Totals count the reports as pytest and junit.xml do (C3): a passed call is
 passed, a failed call a failure, a failed setup or teardown an error, a skip
-or an xfail skipped; tests is the tests attribute of junit.xml. A test
-interrupted before its first report is not counted. The verdict is PASS
+or an xfail skipped; tests is the tests attribute of junit.xml, whose rule
+for a teardown error changed in pytest 9.1 (Totals follows the installed
+pytest, junit_counts_teardown_once). A test interrupted before its first
+report is not counted. The verdict is PASS
 only with exit status 0 and at least one test, INTERRUPTED after Stop, FAIL
 with exit status 1, BENCH ERROR otherwise.
 
@@ -41,11 +43,12 @@ finished is set once run_end has been handed over.
 The runner does not free the serial port (the TUI releases its session
 first), writes no report (report.py) and shows nothing. No Textual import.
 
-Version: 1.0
-Date: 10/11/2026
+Version: 1.1
+Date: 11/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  10/11/2026  Initial version.
+  1.1  11/11/2026  Fix Totals against the junit.xml of pytest 9.1 and later: the teardown error rule follows the installed pytest.
 """
 
 import json
@@ -59,6 +62,7 @@ import sys
 import threading
 import time
 from dataclasses import asdict, dataclass, field
+from importlib import metadata
 from pathlib import Path
 
 from core import scenario as scenarios
@@ -82,14 +86,37 @@ _RX_TRACE = ("TX  ", "RX  ", "BAUD ")
 _RX_ERRORS = ("Serial error", "Configuration error", "Plan error")
 
 
+def _pytest_version() -> tuple:
+    """(major, minor) of the pytest of this interpreter, the one that runs the runs; None without pytest."""
+    try:
+        match = re.match(r"(\d+)\.(\d+)", metadata.version("pytest"))
+    except metadata.PackageNotFoundError:
+        return None
+    return (int(match[1]), int(match[2])) if match else None
+
+
+def junit_counts_teardown_once(version: tuple | None = None) -> bool:
+    """True when junit.xml counts a teardown error once with the earlier phases of its test (pytest >= 9.1).
+
+    pytest 9.1 changed the tests attribute (pytest issue #3850). A teardown
+    error after a failed call opens a second test case in both versions.
+      - pytest < 9.1: the teardown error is counted, less one only after a
+        failed call (two test cases, counted once).
+      - pytest >= 9.1: the teardown error is counted once with its test case,
+        except after a failed call (two test cases, counted twice).
+    """
+    version = version or _pytest_version()
+    return version is None or version >= (9, 1)
+
+
 @dataclass
 class Totals:
     """Counts of the reports received so far, as pytest and its junit.xml count them.
 
     passed is a passed call, failed a failed call, errors a failed setup or
     teardown, skipped a skip or an xfail in any phase. tests is the tests
-    attribute of junit.xml: the sum, less one for a test that fails in call
-    and in teardown (two test cases in the file, counted once).
+    attribute of junit.xml: the sum, less one for some teardown errors,
+    by the rule of the pytest that runs (junit_counts_teardown_once).
     """
 
     tests: int = 0
@@ -98,6 +125,7 @@ class Totals:
     errors: int = 0
     skipped: int = 0
     _failed_call: set = field(default_factory=set, repr=False)
+    _teardown_once: bool = field(default_factory=junit_counts_teardown_once, repr=False)
 
     def add(self, event: dict) -> None:
         if event.get("event") != "report":
@@ -115,8 +143,8 @@ class Totals:
                 self._failed_call.add(nodeid)
             else:
                 self.errors += 1
-                if when == "teardown" and nodeid in self._failed_call:
-                    self.tests -= 1  # Counted once by junit.xml
+                if when == "teardown" and (nodeid in self._failed_call) != self._teardown_once:
+                    self.tests -= 1  # junit.xml counts this teardown error with an earlier phase
         else:
             return
         self.tests += 1

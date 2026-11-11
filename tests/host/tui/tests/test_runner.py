@@ -7,8 +7,10 @@ files. The runs go to tmp_path, never to work/hil-results.
   - plugins/hil_events.py: a real pytest run of fake tests covering every
     outcome; hil_outcome of each phase, the log lines against pytest.log,
     nothing written without --hil-events.
-  - core/runner.py: Totals on hand-made reports, then real runs whose totals
-    must equal junit.xml and the pytest summary (C3); Stop during a test,
+  - core/runner.py: Totals on hand-made reports by the junit.xml rule
+    before and from pytest 9.1, then real runs whose totals must equal
+    junit.xml of the installed pytest and the pytest summary (C3), each
+    teardown error case in its own run; Stop during a test,
     during a fake flash (deferred) and twice during it (forced), with the
     process group checked gone (C2); T1-T8 with fake scripts; scenario runs.
   - core/scenario.py: the step outcomes, the exit codes and the refused files.
@@ -19,11 +21,12 @@ Not tested here: the board, the real flash, make and the real
 uart_rx_check.py (checked by hand on the board in E20), and the display
 (tests_pane.py).
 
-Version: 1.0
-Date: 10/11/2026
+Version: 1.1
+Date: 11/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  10/11/2026  Initial version.
+  1.1  11/11/2026  Test Totals by the junit.xml rule of pytest before and from 9.1, and each teardown error case.
 """
 
 import json
@@ -42,7 +45,7 @@ import pytest
 from adapters.outcomes import UnexpectedReset
 from adapters.serial_adapter import Response
 from core.catalog import load as load_catalog
-from core.runner import PLUGINS_DIR, REPO, Run, Totals
+from core.runner import PLUGINS_DIR, REPO, Run, Totals, junit_counts_teardown_once
 from core.scenario import ScenarioError, load, load_all, run as play_scenario
 from core.suites import SuitesError, discover_all, discover_pytest, discover_rx, discover_scenarios, rx_selection
 
@@ -130,6 +133,37 @@ def test_xfail():
 
 @pytest.mark.xfail(strict=True)
 def test_xpass_strict():
+    pass
+'''
+
+TEARDOWNS = '''\
+import pytest
+
+
+@pytest.fixture
+def bad_teardown():
+    yield
+    raise OSError("port lost in teardown")
+
+
+@pytest.fixture
+def bad_setup():
+    raise OSError("bench down")
+
+
+def test_call_failed(bad_teardown):
+    assert False
+
+
+def test_setup_failed(bad_teardown, bad_setup):
+    pass
+
+
+def test_skipped(bad_teardown):
+    pytest.skip("no LCD")
+
+
+def test_passed(bad_teardown):
     pass
 '''
 
@@ -381,32 +415,49 @@ def test_plugin_writes_nothing_without_option(tmp_path):
 
 # Totals
 
-@pytest.mark.parametrize("reports, expected", [
+@pytest.mark.parametrize("teardown_once", [False, True], ids=["pytest-before-9.1", "pytest-9.1-and-later"])
+@pytest.mark.parametrize("reports, expected, tests_from_9_1", [
     ([("a", "setup", "passed"), ("a", "call", "passed"), ("a", "teardown", "passed")],
-     {"tests": 1, "passed": 1, "failed": 0, "errors": 0, "skipped": 0}),
+     {"tests": 1, "passed": 1, "failed": 0, "errors": 0, "skipped": 0}, 1),
     ([("a", "setup", "passed"), ("a", "call", "failed"), ("a", "teardown", "passed")],
-     {"tests": 1, "passed": 0, "failed": 1, "errors": 0, "skipped": 0}),
+     {"tests": 1, "passed": 0, "failed": 1, "errors": 0, "skipped": 0}, 1),
     ([("a", "setup", "failed"), ("a", "teardown", "passed")],
-     {"tests": 1, "passed": 0, "failed": 0, "errors": 1, "skipped": 0}),
+     {"tests": 1, "passed": 0, "failed": 0, "errors": 1, "skipped": 0}, 1),
     ([("a", "setup", "passed"), ("a", "call", "passed"), ("a", "teardown", "failed")],
-     {"tests": 2, "passed": 1, "failed": 0, "errors": 1, "skipped": 0}),
+     {"tests": 2, "passed": 1, "failed": 0, "errors": 1, "skipped": 0}, 1),
     ([("a", "setup", "passed"), ("a", "call", "failed"), ("a", "teardown", "failed")],
-     {"tests": 1, "passed": 0, "failed": 1, "errors": 1, "skipped": 0}),
+     {"tests": 1, "passed": 0, "failed": 1, "errors": 1, "skipped": 0}, 2),
+    ([("a", "setup", "failed"), ("a", "teardown", "failed")],
+     {"tests": 2, "passed": 0, "failed": 0, "errors": 2, "skipped": 0}, 1),
+    ([("a", "setup", "skipped"), ("a", "teardown", "failed")],
+     {"tests": 2, "passed": 0, "failed": 0, "errors": 1, "skipped": 1}, 1),
     ([("a", "setup", "skipped"), ("a", "teardown", "passed")],
-     {"tests": 1, "passed": 0, "failed": 0, "errors": 0, "skipped": 1}),
+     {"tests": 1, "passed": 0, "failed": 0, "errors": 0, "skipped": 1}, 1),
     ([("a", "setup", "passed"), ("a", "call", "skipped"), ("a", "teardown", "passed")],
-     {"tests": 1, "passed": 0, "failed": 0, "errors": 0, "skipped": 1}),
+     {"tests": 1, "passed": 0, "failed": 0, "errors": 0, "skipped": 1}, 1),
     ([("a", "setup", "passed")],
-     {"tests": 0, "passed": 0, "failed": 0, "errors": 0, "skipped": 0}),
-], ids=["passed", "call-failed", "setup-error", "teardown-error", "call-and-teardown", "skip-in-setup",
-        "skip-or-xfail-in-call", "interrupted-before-call"])
-def test_totals_count_as_junit(reports, expected):
-    totals = Totals()
+     {"tests": 0, "passed": 0, "failed": 0, "errors": 0, "skipped": 0}, 0),
+], ids=["passed", "call-failed", "setup-error", "teardown-error", "call-and-teardown", "setup-and-teardown",
+        "skip-and-teardown", "skip-in-setup", "skip-or-xfail-in-call", "interrupted-before-call"])
+def test_totals_count_as_junit(reports, expected, tests_from_9_1, teardown_once):
+    """tests by the rule of junit.xml before pytest 9.1, and from 9.1 (pytest issue #3850)."""
+    totals = Totals(_teardown_once=teardown_once)
     totals.add({"event": "test_start", "nodeid": "a"})
     for nodeid, when, outcome in reports:
         totals.add(report(nodeid, when, outcome))
     totals.add({"event": "log", "text": "RX  x"})
-    assert totals.counts() == expected
+    assert totals.counts() == {**expected, "tests": tests_from_9_1 if teardown_once else expected["tests"]}
+
+
+@pytest.mark.parametrize("version, once", [((8, 4), False), ((9, 0), False), ((9, 1), True), ((9, 2), True),
+                                           ((10, 0), True)], ids=["8.4", "9.0", "9.1", "9.2", "10.0"])
+def test_junit_rule_by_pytest_version(version, once):
+    assert junit_counts_teardown_once(version) is once
+
+
+def test_totals_follow_the_installed_pytest():
+    major, minor = (int(part) for part in re.match(r"(\d+)\.(\d+)", pytest.__version__).groups())
+    assert Totals()._teardown_once is ((major, minor) >= (9, 1))
 
 
 # Runner: pytest
@@ -425,6 +476,15 @@ def test_runner_pytest_totals_equal_junit(tmp_path):
     kinds = [event["event"] for event in run.seen]
     assert kinds[-1] == "run_end" and kinds.count("run_end") == 1
     assert run.seen[-1]["verdict"] == "FAIL" and run.folder.parent == tmp_path / "runs"
+
+
+def test_runner_pytest_teardown_errors_equal_junit(tmp_path):
+    """Each teardown error case alone: CASES has one of each kind, their differences cancel out."""
+    run = make_run(tmp_path, "pytest", tests=suite_of(tmp_path, "teardown", TEARDOWNS), everything=True)
+    run.start()
+    finish(run)
+    assert run.totals.counts() == junit_counts(run.folder)
+    assert (run.totals.failed, run.totals.errors, run.totals.skipped, run.totals.passed) == (1, 5, 1, 1)
 
 
 def test_runner_pytest_all_passed(tmp_path):

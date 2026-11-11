@@ -5,8 +5,8 @@
 \brief      Commands and keys of the HIL bench TUI, and its pytest event stream.
 
 \author     Z. BEN-AKKA
-\version    1.3
-\date       10/11/2026
+\version    1.4
+\date       11/11/2026
 
 \section tui_hil_tui_md_version_history Version history
 | Version | Date       | Author      | Description      |
@@ -15,6 +15,7 @@
 | 1.1     | 09/11/2026 | Z. BEN-AKKA | Add the event stream of the hil_events pytest plugin. |
 | 1.2     | 10/11/2026 | Z. BEN-AKKA | Fix the JUnit counting rule: a call and teardown failure counts once in tests. |
 | 1.3     | 10/11/2026 | Z. BEN-AKKA | Add the Tests tab: keys, runs and the board state after a run. |
+| 1.4     | 11/11/2026 | Z. BEN-AKKA | Fix the JUnit counting rule of a teardown error: it changed in pytest 9.1. |
 ****************************
 -->
 
@@ -118,7 +119,14 @@ every line written so far. Each line has `t` (epoch seconds) and `event`:
 The plugin does not count. To get the `junit.xml` totals, count the `report`
 lines as pytest does: a passed `call` is passed, a failed `call` a failure, a
 failed `setup` or `teardown` an error, a skip or an xfail skipped. The
-`tests` attribute is their sum, less one for each test that fails in `call`
-and in `teardown`: `junit.xml` writes two test cases for it but counts it
-once. `core/runner.py` counts this way. A write error never fails the tests:
-one line on stderr, then the stream stops.
+`tests` attribute is their sum, less one for some teardown errors; the rule
+changed in pytest 9.1 (pytest issue #3850):
+
+| Failed `teardown` after | pytest < 9.1 | pytest ≥ 9.1 |
+|:--|:--|:--|
+| A failed `call` (two test cases in `junit.xml`) | Less one: counted once | Counted twice |
+| Anything else (passed `call`, skip, failed `setup`) | Counted twice | Less one: counted once |
+
+`core/runner.py` counts by the rule of the installed pytest, the one that runs
+the tests. A write error never fails the tests: one line on stderr, then the
+stream stops.
