@@ -5,6 +5,16 @@ frames, titles and selection bar with white text, a blue footer with its
 keys in yellow, red for errors. app.py registers HIL_DIALOG and selects it at launch;
 the command palette (ctrl+p) still offers the built-in Textual themes.
 
+The panes write their texts with named colours (yellow, green, cyan, red).
+Under a light theme Textual turns them into the colours of its light ANSI
+palette, too pale for the grey (yellow at 1.5:1). ANSI is the palette of this
+theme, made of its own colours: app.py sets it as App.ansi_theme_light, so the
+named colours of every pane follow without changing the panes. White stays
+white: the panes write it only on a coloured background. Textual applies the
+palette to the spans of a Rich Text, not to its base style: Text(message,
+style="green") in a Static gives the CSS green, so write it as a span with
+Text.assemble((message, "green")).
+
 Every pair of text and background colours used here keeps a contrast ratio
 of at least 4.5:1 (WCAG AA), so the TUI stays readable in the VS Code
 terminal: contrast() computes it and the checks of this theme use it.
@@ -12,13 +22,15 @@ terminal: contrast() computes it and the checks of this theme use it.
 Not reproduced from dialog(1): the red hot letter of each list item (the
 tree and the command list have no letter keys) and the shadow of the boxes.
 
-Version: 1.0
+Version: 1.1
 Date: 11/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  11/11/2026  Initial version.
+  1.1  11/11/2026  Add the ANSI palette of the theme: the named colours readable on the grey.
 """
 
+from rich.terminal_theme import TerminalTheme
 from textual.theme import Theme
 
 NAME = "hil-dialog"
@@ -32,6 +44,8 @@ BLACK = "#000000"
 WHITE = "#FFFFFF"
 GREEN = "#005000"  # Success: dark, readable on the grey
 YELLOW = "#5C4400"  # Warning: dark ochre, a pure yellow is unreadable on the grey
+CYAN = "#00505A"  # TX lines, current test: dark teal
+MAGENTA = "#6A006A"  # Not used by the panes yet, readable all the same
 
 HIL_DIALOG = Theme(
     name=NAME,
@@ -78,8 +92,20 @@ PAIRS = {
     "success on screen": (GREEN, GREY),
     "footer key": ("#FFFF55", BLUE),
     "footer text": (WHITE, BLUE),
+    "ANSI cyan on screen": (CYAN, GREY),
+    "ANSI magenta on screen": (MAGENTA, GREY),
 }
 MIN_CONTRAST = 4.5
+
+
+def _rgb(colour: str) -> tuple[int, int, int]:
+    """#RRGGBB as a (red, green, blue) tuple."""
+    return tuple(int(colour[index:index + 2], 16) for index in (1, 3, 5))
+
+
+# Named colours black, red, green, yellow, blue, magenta, cyan, white; the bright ones are the same
+ANSI = TerminalTheme(_rgb(GREY), _rgb(BLACK),
+                     [_rgb(colour) for colour in (BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE)])
 
 
 def _luminance(colour: str) -> float:
