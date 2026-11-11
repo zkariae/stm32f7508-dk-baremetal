@@ -18,11 +18,12 @@ a test, and hand-made run folders for the cases a run cannot be asked for.
 Not tested here: the Export button of the TUI (E28) and the look of the
 page in a browser (checked by hand in E26).
 
-Version: 1.0
-Date: 10/11/2026
+Version: 1.1
+Date: 11/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  10/11/2026  Initial version.
+  1.1  11/11/2026  Fix the expected totals for the junit.xml rule of pytest 9.1 and later.
 """
 
 import json
@@ -38,12 +39,14 @@ from pathlib import Path
 import pytest
 
 from core import report
-from core.runner import BENCH, PLUGINS_DIR, Run
+from core.runner import BENCH, PLUGINS_DIR, Run, junit_counts_teardown_once
 
 PY = sys.executable
 REPORT_PY = Path(report.__file__)
 RUN_WAIT = 30.0  # Seconds a test waits for a run to end
 EVENT_WAIT = 15.0  # Seconds a test waits for a line of events.jsonl
+# junit.xml of pytest 9.1 and later counts a failed call then a failed teardown twice (hil_tui.md)
+CALL_AND_TEARDOWN = int(junit_counts_teardown_once())
 SESSION = "READY name=hil-bench fw=1.3.0 proto=1.3 build=abc1234 reset=PIN reset_flags=0x04000000"
 
 INI = """\
@@ -208,7 +211,7 @@ def test_real_run_totals_equal_junit_and_run_json(failed_run):
     assert rep.totals == meta["totals"] == run.totals.counts()
     assert {key: rep.totals[key] for key in ("tests", "failed", "errors", "skipped")} == \
         junit_counts(run.folder / "junit.xml")
-    assert rep.totals == {"tests": 4, "passed": 2, "failed": 1, "errors": 1, "skipped": 1}
+    assert rep.totals == {"tests": 4 + CALL_AND_TEARDOWN, "passed": 2, "failed": 1, "errors": 1, "skipped": 1}
     assert (rep.verdict, rep.exitstatus, rep.rebuilt, rep.bad_lines) == ("FAIL", 1, False, [])
 
 
@@ -335,7 +338,7 @@ def hand_made(tmp_path: Path, bench: str | None = None) -> Path:
 
 def test_hand_made_failures(tmp_path):
     rep = report.build(hand_made(tmp_path))
-    assert rep.totals == {"tests": 3, "passed": 0, "failed": 2, "errors": 1, "skipped": 1}
+    assert rep.totals == {"tests": 3 + CALL_AND_TEARDOWN, "passed": 0, "failed": 2, "errors": 1, "skipped": 1}
     led, step = rep.failures
     assert (led.request, led.records) == ("CMD id=4 command=LED_GET", ["RESULT id=4 status=OK state=off", "END id=4"])
     assert led.message == "AssertionError: LED | should be <on>; teardown: BENCH_ERROR OSError: port lost"
