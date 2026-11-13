@@ -5,8 +5,8 @@
 \brief      Commands and keys of the HIL bench TUI, and its pytest event stream.
 
 \author     Z. BEN-AKKA
-\version    1.5
-\date       11/11/2026
+\version    1.6
+\date       13/11/2026
 
 \section tui_hil_tui_md_version_history Version history
 | Version | Date       | Author      | Description      |
@@ -17,6 +17,7 @@
 | 1.3     | 10/11/2026 | Z. BEN-AKKA | Add the Tests tab: keys, runs and the board state after a run. |
 | 1.4     | 11/11/2026 | Z. BEN-AKKA | Fix the JUnit counting rule of a teardown error: it changed in pytest 9.1. |
 | 1.5     | 11/11/2026 | Z. BEN-AKKA | Add the Export key and the report of a run. |
+| 1.6     | 13/11/2026 | Z. BEN-AKKA | Add the dialog look, the command palette and the progress box. |
 ****************************
 -->
 
@@ -51,12 +52,39 @@ catalogue is invalid. Install Textual with
 | F3 or ctrl+o | Switches between the Commands and Tests tabs |
 | F4 or ctrl+y | Export: writes the report of the last run |
 | ctrl+q or ctrl+l | Quit and free the port; during a run, asks first |
+| ctrl+p | Command palette of Textual: change the theme, show the keys |
 | Enter in a field | Sends the command, as the Send button does |
 | Space in the test tree | Marks or unmarks a test, a file or a family |
 | Enter in the test tree | Opens or closes a node |
 | Escape in a confirmation | Answers No |
+| Escape or Enter in a progress box | Closes a box that does not close by itself |
 
 The VS Code terminal keeps F5, F6 and ctrl+q: use the ctrl keys there.
+
+## Look
+
+The TUI opens in the style of dialog(1): a light grey background, titles
+and gauges in blue. The named colours of the panes go through the ANSI
+palette of the theme, so they stay readable on the grey. A confirmation is
+a box without a frame on a darkened screen; No keeps the focus.
+
+ctrl+p, then Theme, offers the Textual themes. A dark theme brings back
+the Textual palette; the dialog theme comes back at the next launch.
+
+## Progress box
+
+A small box centred on a dimmed screen follows the Export and a lost
+connection.
+
+| Event | Box |
+|:--|:--|
+| Export | "Export": the gauge goes to 25, 50, 75 and 100% as the report is built, then written. "Export done" closes after 2.5 s; `Export failed: <error>` stays until Escape |
+| Session lost or port lost | "Connection": a block moves to and fro. F7/ctrl+r (Recover) and F5/ctrl+n (Connect) still work under the box |
+| Connected again | "Connection back" at 100%, closes after 2 s |
+
+There are never two boxes: a new event replaces the content of the open
+one. Disconnect, a busy port and the port released for a run show no box.
+The message line under the box keeps the details.
 
 ## Tests tab
 
@@ -88,7 +116,7 @@ Each run has its own folder `work/hil-results/<date-time>-<suite>/` with
 Export is grey until a run ends. It is then active whatever the verdict,
 `INTERRUPTED` after a Stop included, and grey again during the next run. It
 writes `report.md` and `report.html` in the folder of the last run; the
-message line gives their path. The report holds the verdict, the totals, one
+progress box shows the steps and the message line gives their path. The report holds the verdict, the totals, one
 line per test with its outcome (`tests/protocol.md` section 7.3), the banner,
 the Git commit, the timeouts that differ from section 8.1 and, for each
 failure, the last request and the records received for it.
