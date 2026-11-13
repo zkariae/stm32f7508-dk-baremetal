@@ -6,10 +6,13 @@ UART driver diagnostic. It is separate from the hil-bench protocol firmware.
 Serial settings, timeouts and delays come from tests/host/config/bench.yaml;
 command-line options override them. Test parameters and expected results come
 from rx_check/plans/uart_rx.yaml.
+The port is locked for the whole run: a port held by another program (pytest,
+the TUI, miniterm) is refused and the holder is named. --trace also prints
+every chunk of bytes sent (TX) and received (RX) and each baud rate change.
 Requires pyserial and PyYAML: python -m pip install pyserial pyyaml
 
-Version: 1.19
-Date: 23/10/2026
+Version: 1.20
+Date: 09/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  16/10/2026  Initial host-side UART echo check.
@@ -32,9 +35,11 @@ History:
   1.17 22/10/2026  Wait extra_byte_wait, not the read timeout, in the extra-byte check.
   1.18 22/10/2026  Require the uart-diag image instead of a raw-echo build mode.
   1.19 23/10/2026  Move to rx_check/; read the shared tests/host/config/bench.yaml.
+  1.20 09/11/2026  Lock the port exclusively; add --trace to print the bytes sent and received.
 """
 
 import argparse
+import errno
 import sys
 import time
 from dataclasses import dataclass
@@ -55,10 +60,55 @@ except ImportError:
 RX_CHECK_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = RX_CHECK_DIR.parent / "config" / "bench.yaml"  # Shared with hil/
 DEFAULT_PLAN = RX_CHECK_DIR / "plans" / "uart_rx.yaml"
+
+# One way to name the lock holder and to show bytes, shared with the HIL adapter
+sys.path.insert(0, str(RX_CHECK_DIR.parent / "hil"))
+from adapters.serial_adapter import port_holder, show  # noqa: E402
+
 SUPPORTED_SCHEMA = 1
 PARITIES = {"none": serial.PARITY_NONE, "even": serial.PARITY_EVEN, "odd": serial.PARITY_ODD}
 FLOW_CONTROLS = ("none", "rtscts", "xonxoff")
 MAX_MARKER_LINES = 16  # Bound on marker lines read before the recovery line.
+TRACE_MAX_LEN = 64  # Bytes shown per trace line; T2 sends 1,000 bytes in one write.
+BUSY_ERRNOS = (errno.EAGAIN, errno.EWOULDBLOCK)  # flock refused: another program holds the port
+
+
+class TracedLink:
+    """Serial port that prints each chunk sent and received (--trace); the rest goes to the port."""
+
+    def __init__(self, link: serial.Serial):
+        object.__setattr__(self, "_link", link)
+
+    def __getattr__(self, name):
+        return getattr(self._link, name)
+
+    def __setattr__(self, name, value):
+        if name == "baudrate":
+            print(f"BAUD {value}")
+        setattr(self._link, name, value)
+
+    @staticmethod
+    def _trace(direction: str, data: bytes) -> None:
+        text = show(data[:TRACE_MAX_LEN])
+        if len(data) > TRACE_MAX_LEN:
+            text += f" ... ({len(data)} bytes)"
+        print(f"{direction}  {text}")
+
+    def write(self, data: bytes):
+        self._trace("TX", data)
+        return self._link.write(data)
+
+    def read(self, size: int = 1) -> bytes:
+        data = self._link.read(size)
+        if data:  # An empty read is a timeout, already reported by the test
+            self._trace("RX", data)
+        return data
+
+    def read_until(self, expected: bytes = b"\n", size: int | None = None) -> bytes:
+        data = self._link.read_until(expected, size)
+        if data:
+            self._trace("RX", data)
+        return data
 
 
 class PlanError(Exception):
@@ -615,7 +665,10 @@ def main() -> int:
     parser.add_argument("--only", nargs="+", metavar="ID", help="run only these test IDs, e.g. T1 T3")
     parser.add_argument("--baud", type=int, help="baud rate (default: bench.yaml)")
     parser.add_argument("--timeout", type=float, help="reply timeout in seconds (default: bench.yaml)")
+    parser.add_argument("--trace", action="store_true", help="print the bytes sent (TX) and received (RX)")
     args = parser.parse_args()
+    if args.trace:
+        sys.stdout.reconfigure(line_buffering=True)  # Show each line at once through a pipe (TUI)
 
     source = args.config
     try:
@@ -653,7 +706,7 @@ def main() -> int:
         return 2
 
     try:
-        with serial.Serial(
+        port_link = serial.Serial(
             port=port,
             baudrate=baud,
             bytesize=link_config["bytesize"],
@@ -664,7 +717,20 @@ def main() -> int:
             xonxoff=link_config["flow_control"] == "xonxoff",
             rtscts=link_config["flow_control"] == "rtscts",
             dsrdtr=False,
-        ) as link:
+            exclusive=True,  # flock before any line change: pytest, the TUI and miniterm are refused
+        )
+    except (serial.SerialException, OSError) as error:
+        # Only at open time does EAGAIN mean a lock held by another program
+        if getattr(error, "errno", None) in BUSY_ERRNOS:
+            holder = port_holder(port) or "an unknown program"
+            print(f"Serial error: {port} is busy: held by {holder}", file=sys.stderr)
+        else:
+            print(f"Serial error: {error}", file=sys.stderr)
+        return 2
+
+    try:
+        with port_link:
+            link = TracedLink(port_link) if args.trace else port_link
             time.sleep(port_open_settle)  # Allow the serial adapter to settle after opening.
             failed = []
             for test in plan:
