@@ -6,7 +6,9 @@ reset queues a banner. The fake firmware answers HELLO and CAPS like
 hil-bench and every other command with status=OK and its arguments echoed;
 a value "bad" gets ERR INVALID_ARGUMENT, so a rejected case goes through the
 real result view. The tests are synchronous and drive the pilot with
-asyncio.run, so no async pytest plugin is needed.
+asyncio.run, so no async pytest plugin is needed. The fake firmware answers
+at once, so its timeouts are only margins: wide enough that a loaded CI host
+which pauses the session thread does not take a ready answer for a timeout.
 
 Checked: the list follows CAPS and the catalogue, each catalogue command is
 sent from its form with its default arguments, a typed error sends nothing,
@@ -19,11 +21,12 @@ or catalogue.
 Not tested here: the real port and board (E16), the make targets, and the
 rendering in a real terminal (the VS Code key capture was checked by hand).
 
-Version: 1.0
-Date: 09/11/2026
+Version: 1.1
+Date: 13/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  09/11/2026  Initial version.
+  1.1  13/11/2026  Wider timeouts of the fake bench and a longer wait: a loaded CI host missed the 0.3 s answer.
 """
 
 import asyncio
@@ -52,7 +55,7 @@ SW_BANNER = BANNER.replace(b"reset=PIN reset_flags=0x04000000", b"reset=SW reset
 CAPS_PAGE = 8  # Names per CAPS page, as hil-bench
 HOLDER = "python3 -m serial.tools.miniterm (PID 42)"
 SIZE = (120, 36)
-WAIT = 3.0  # Seconds a test waits for a state
+WAIT = 6.0  # Seconds a test waits for a state, well above the response timeout
 STEP = 0.05
 
 
@@ -88,8 +91,8 @@ class Rig:
     def __init__(self, caps: list = NAMES):
         self.bench = copy.deepcopy(load_bench())
         self.bench["delays"]["port_open_settle"] = 0.0
-        self.bench["timeouts"]["startup"] = 0.5
-        self.bench["timeouts"]["response"] = 0.3
+        self.bench["timeouts"]["startup"] = 2.0  # Margins only: the fake answers at once
+        self.bench["timeouts"]["response"] = 1.0
         self.caps = caps
         self.silent = False  # The firmware stops answering
         self.holder = None  # Program that holds the port, or None
