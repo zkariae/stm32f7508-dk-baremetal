@@ -43,6 +43,18 @@ whatever the verdict, INTERRUPTED after a Stop included, and grey again while
 a run or an export is on its way. The report is written only on request; the
 report of a run killed with the TUI is rebuilt on the command line.
 
+A progress box (ui/progress_box.py) follows the Export and a lost
+connection; one box at a time, a new event updates it in place.
+  - Export: the gauge moves at each real step of the report (built 25%,
+    Markdown 50%, HTML 75%, both files written 100%); "Export done" closes
+    by itself after 2.5 s, "Export failed: <error>" stays until Escape.
+  - Connection: a lost session (SESSION_LOST) or a lost port shows a moving
+    gauge with the keys to come back, "Connection back" closes it 2 s after
+    CONNECTED. A Disconnect of the user, a busy port and the port released
+    for a run show no box.
+Recover and Connect stay active under the box (a modal screen stops the
+application keys otherwise); their actions check the state, as from the bar.
+
 The monitor is shown by default; F2 hides it and the tabs take the whole
 height. Each F key also has a ctrl key, since the VS Code terminal keeps F5
 and F6 for itself. Its handler stays attached, so lines keep arriving while
@@ -56,8 +68,8 @@ has no frame, the screen behind it turns dark blue and No keeps the focus.
 The command palette (ctrl+p) still offers the Textual themes; a dark one
 brings back the Textual palette, since ANSI replaces only the light one.
 
-Version: 1.4
-Date: 11/11/2026
+Version: 1.5
+Date: 13/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  09/11/2026  Initial version.
@@ -65,6 +77,7 @@ History:
   1.2  10/11/2026  Tests tab: run pytest, T1-T8 and the scenarios with live display, the board state after.
   1.3  11/11/2026  Export the report of the last run, in a worker, from the Export button, F4 or ctrl+y.
   1.4  11/11/2026  Open with the dialog theme and its ANSI palette; dialog-style Yes or No box.
+  1.5  13/11/2026  Progress box: Export by its real steps, and a Connection box while the session or port is lost.
 """
 
 import collections
@@ -92,6 +105,7 @@ from core.suites import SCENARIOS_DIR, discover_all
 from ui import theme
 from ui.commands_pane import CommandsPane
 from ui.monitor import DIRECTIONS, Monitor, MonitorHandler, MonitorLine, attach, detach
+from ui.progress_box import ProgressBox
 from ui.tests_pane import TestsPane
 
 STATE_STYLES = {
@@ -112,6 +126,13 @@ TAB_COMMANDS, TAB_TESTS = "tab-commands", "tab-tests"
 RUN_TITLES = {"pytest": "pytest", "rx_check": "UART RX", "scenario": "Scenario"}
 RUN_REFRESH = 0.2  # Seconds between two screen updates of a run, whatever its event rate
 RUN_BATCH = 2000  # Events handed over per update at most, so a backlog never blocks the UI
+EXPORT_DONE_CLOSE = 2.5  # Seconds the "Export done" box stays
+CONNECTION_BACK_CLOSE = 2.0  # Seconds the "Connection back" box stays
+CONNECTION_LOST = "Connection lost: press Recover (F7/^R) or Connect (F5/^N)"
+BOX_KEYS = (  # Application keys still active under the progress box
+    Binding("f7,ctrl+r", "app.recover", "Recover", key_display="F7/^R"),
+    Binding("f5,ctrl+n", "app.connect", "Connect", key_display="F5/^N"),
+)
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -262,6 +283,9 @@ class HilApp(App):
         self.run_events = collections.deque()  # Run events waiting for the next refresh
         self.last_folder = None  # Folder of the last finished run: what Export writes the report of
         self.exporting = False
+        self.export_progress = 0  # Last step of the export done, in percent
+        self.box = None  # The progress box shown, or None
+        self.connection_lost = False  # The Connection box was shown since the last connection
 
     def compose(self) -> ComposeResult:
         yield Static(id="status")
@@ -353,6 +377,7 @@ class HilApp(App):
             self.pane.show_failure(self.pending, event.text.split(": ", 1)[1])
             self.pending = None
         self._refresh(event.state, self._message(event))
+        self._connection_box(event)
         if event.kind == "state" and event.state is State.RUNNING and self.pending_run is not None:
             self._start_pending_run()  # The port is closed now
 
@@ -424,6 +449,32 @@ class HilApp(App):
 
     def _say(self, text: str, style: str = "") -> None:
         self._refresh(self.session.state, (text, style))
+
+    # Progress box
+
+    def _show_box(self, title: str, message: str, progress: float | None, auto_close: float | None = None) -> None:
+        """Show the progress box, or update the one shown: never two boxes."""
+        if self.box is not None and self.box in self.screen_stack:
+            self.box.update(title, message, progress, auto_close)
+            return
+        box = ProgressBox(title, message, progress, auto_close, keys=BOX_KEYS)
+        self.box = box
+        self.push_screen(box, lambda _: self._box_closed(box))
+
+    def _box_closed(self, box: ProgressBox) -> None:
+        if self.box is box:
+            self.box = None
+
+    def _connection_box(self, event) -> None:
+        """Connection box: shown while the session or the port is lost, closed soon after CONNECTED."""
+        lost = (event.kind == "state" and event.state is State.SESSION_LOST) or (
+            event.kind == "error" and event.state is State.DISCONNECTED and event.text.startswith("port lost: "))
+        if lost:
+            self.connection_lost = True
+            self._show_box("Connection", CONNECTION_LOST, None)
+        elif event.kind == "state" and event.state is State.CONNECTED and self.connection_lost:
+            self.connection_lost = False
+            self._show_box("Connection", "Connection back", 100, CONNECTION_BACK_CLOSE)
 
     # Commands
 
@@ -637,26 +688,54 @@ class HilApp(App):
         if not self.can_export:
             return
         self.exporting = True
-        self._say(f"Writing the report of {self.last_folder.name}...")
+        self.export_progress = 0
+        message = f"Writing the report of {self.last_folder.name}..."
+        self._say(message)
+        self._show_box("Export", message, 0)
         self.run_worker(lambda: self._export_job(self.last_folder), thread=True, exclusive=True, group="export")
 
     def _export_job(self, folder: Path) -> None:
+        """The steps of report.export(), each one shown on the gauge."""
         try:
-            markdown, _ = report.export(folder)
+            built = report.build(folder)
+            self._export_step(25)
+            markdown = report.to_markdown(built)
+            self._export_step(50)
+            page = report.to_html(built)
+            self._export_step(75)
+            written = built.folder / "report.md"
+            written.write_text(markdown, encoding="utf-8")
+            (built.folder / "report.html").write_text(page, encoding="utf-8")
             error = None
         except Exception as failure:  # ReportError, OSError: the folder was removed or is not writable
-            markdown, error = None, str(failure)
+            written, error = None, str(failure)
         try:
-            self.call_from_thread(self._exported, folder, markdown, error)
+            self.call_from_thread(self._exported, folder, written, error)
         except RuntimeError:  # The application has already stopped
             pass
+
+    def _export_step(self, progress: int) -> None:
+        """From the export thread: one step done."""
+        try:
+            self.call_from_thread(self._export_progress, progress)
+        except RuntimeError:  # The application has already stopped
+            pass
+
+    def _export_progress(self, progress: int) -> None:
+        self.export_progress = progress
+        if self.box is not None and self.box.box_title == "Export":  # Not if Escape closed it or Connection took it
+            self.box.update("Export", self.box.message, progress)
 
     def _exported(self, folder: Path, markdown: Path | None, error: str | None) -> None:
         self.exporting = False
         if error is not None:
             self._say(f"Report not written: {error}", "bold red")
+            if not self.connection_lost:  # A lost connection keeps its box
+                self._show_box("Export", f"Export failed: {error}", self.export_progress)
         else:
             self._say(f"Report written: {markdown.parent}/report.md and report.html", "green")
+            if not self.connection_lost:
+                self._show_box("Export", "Export done", 100, EXPORT_DONE_CLOSE)
 
     def action_toggle_monitor(self) -> None:
         """Show or hide the monitor; lines keep arriving while it is hidden."""
