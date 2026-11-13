@@ -50,7 +50,13 @@ it is hidden. Quit detaches the handler and stops the session, which frees
 the port. The session and run factories are parameters, so tests run the
 application on the fake firmware and on fake runs.
 
-Version: 1.3
+The TUI opens with the dialog theme of ui/theme.py and its ANSI palette, so
+the named colours of the panes stay readable on the grey. The Yes or No box
+has no frame, the screen behind it turns dark blue and No keeps the focus.
+The command palette (ctrl+p) still offers the Textual themes; a dark one
+brings back the Textual palette, since ANSI replaces only the light one.
+
+Version: 1.4
 Date: 11/11/2026
 Author: Z. BEN-AKKA
 History:
@@ -58,6 +64,7 @@ History:
   1.1  09/11/2026  Disconnect on ctrl+b and quit on ctrl+l: the VS Code terminal keeps ctrl+g and ctrl+q.
   1.2  10/11/2026  Tests tab: run pytest, T1-T8 and the scenarios with live display, the board state after.
   1.3  11/11/2026  Export the report of the last run, in a worker, from the Export button, F4 or ctrl+y.
+  1.4  11/11/2026  Open with the dialog theme and its ANSI palette; dialog-style Yes or No box.
 """
 
 import collections
@@ -82,6 +89,7 @@ from core.runner import RESULTS, Run
 from core.scenario import ScenarioError, load as load_scenario
 from core.session import Session, State
 from core.suites import SCENARIOS_DIR, discover_all
+from ui import theme
 from ui.commands_pane import CommandsPane
 from ui.monitor import DIRECTIONS, Monitor, MonitorHandler, MonitorLine, attach, detach
 from ui.tests_pane import TestsPane
@@ -110,8 +118,8 @@ class ConfirmScreen(ModalScreen[bool]):
     """Yes or No before a command with an effect, or for a scenario prompt."""
 
     DEFAULT_CSS = """
-    ConfirmScreen { align: center middle; }
-    ConfirmScreen > Vertical { width: 64; height: auto; border: thick $warning; padding: 1 2; background: $surface; }
+    ConfirmScreen { align: center middle; background: #000080 70%; }
+    ConfirmScreen > Vertical { width: 64; height: auto; padding: 1 2; background: $surface; }
     ConfirmScreen Horizontal { height: auto; margin-top: 1; align-horizontal: right; }
     ConfirmScreen Button { margin-left: 2; }
     """
@@ -125,8 +133,8 @@ class ConfirmScreen(ModalScreen[bool]):
         with Vertical():
             yield Label(self.question)
             with Horizontal():
-                yield Button("No", id="no", variant="primary")
-                yield Button("Yes", id="yes", variant="warning")
+                yield Button("< No >", id="no", variant="primary")
+                yield Button("< Yes >", id="yes")
 
     def on_mount(self) -> None:
         self.query_one("#no", Button).focus()  # The safe answer is the default
@@ -212,6 +220,10 @@ class HilApp(App):
     #tabs TabPane { padding: 0; }
     CommandsPane, TestsPane { height: 1fr; }
     Monitor { height: 40%; }
+    /* Textual greys an inactive tab at 50% and a group title of the command list at 38%: 3.5:1 and 2.6:1 on the
+       grey of the theme; 75% keeps them apart from the active tab and the commands, above 4.5:1 */
+    #tabs Tab { color: $foreground 75%; }
+    #commands > .option-list--option-disabled { color: $foreground 75%; }
     """
     # The VS Code terminal keeps F5 (debug), F6 (focus), ctrl+g (go to line) and ctrl+q (quit):
     # each action also has a ctrl key that reaches the application there and that no field uses
@@ -270,6 +282,9 @@ class HilApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.register_theme(theme.HIL_DIALOG)
+        self.ansi_theme_light = theme.ANSI  # Before the theme: Textual reads the palette when the theme changes
+        self.theme = theme.NAME
         self.monitor = self.query_one(Monitor)
         self.pane = self.query_one(CommandsPane)
         self.tests = self.query_one(TestsPane)
@@ -398,7 +413,7 @@ class HilApp(App):
             status.append(f"  {self.warning}", style="bold yellow")
         self.query_one("#status", Static).update(status)
         if message is not None:
-            self.query_one("#message", Static).update(Text(*message))
+            self.query_one("#message", Static).update(Text.assemble(message))  # A span: the theme palette applies
         busy = self.busy
         self.query_one("#connect", Button).disabled = busy or state not in CONNECT_STATES
         self.query_one("#disconnect", Button).disabled = busy or state in (State.DISCONNECTED, State.RUNNING)
