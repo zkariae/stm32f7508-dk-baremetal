@@ -5,8 +5,8 @@
 \brief      Declarative pipeline of the Multibranch job: build, then the board tests.
 
 \author     Z. BEN-AKKA
-\version    1.0
-\date       03/11/2026
+\version    1.1
+\date       13/11/2026
 
 \details
   Read by the Multibranch Pipeline job (Script Path ci/Jenkinsfile), see
@@ -16,10 +16,16 @@
   GitHub Branch Source publishes the result as the status
   continuous-integration/jenkins/pr-merge required by the rulesets.
 
+  A pull request that touches only the TUI (tests/host/tui), the plans
+  (work/doc_zak) or Markdown files skips the board stages: none of them
+  reaches the firmware or tests/host/hil, and Build still runs the TUI
+  tests. Any other file, or a build without a merge commit, runs them all.
+
 \section ci_jenkinsfile_version_history Version history
 | Version | Date       | Author      | Description      |
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 03/11/2026 | Z. BEN-AKKA | Initial version. |
+| 1.1     | 13/11/2026 | Z. BEN-AKKA | Skip the board stages when a pull request touches only the TUI or documentation. |
 ****************************
 */
 
@@ -45,6 +51,21 @@ pipeline {
       }
     }
 
+    stage('Changes') {
+      when { changeRequest() }
+      steps {
+        script {
+          // pr-merge: HEAD merges the pull request into its target, HEAD^1 is the target. No merge commit: run all
+          def merged = sh(returnStatus: true, script: 'git rev-parse -q --verify HEAD^2') == 0
+          // grep -v finds a file outside the TUI and the documentation: the board stages are needed
+          def other = sh(returnStatus: true,
+                         script: "git diff --name-only HEAD^1 HEAD | grep -qvE '^(tests/host/tui/|work/doc_zak/)|[.]md\$'") == 0
+          env.BOARD_TESTS = (!merged || other) ? 'run' : 'skip'
+          echo "Board stages: ${env.BOARD_TESTS}"
+        }
+      }
+    }
+
     stage('Build') {
       steps {
         sh 'ci/scripts/build.sh --clean'
@@ -52,14 +73,14 @@ pipeline {
     }
 
     stage('UART T1-T8') {
-      when { changeRequest() }
+      when { allOf { changeRequest(); environment name: 'BOARD_TESTS', value: 'run' } }
       steps {
         sh 'ci/scripts/rx_check.sh'
       }
     }
 
     stage('HIL') {
-      when { changeRequest() }
+      when { allOf { changeRequest(); environment name: 'BOARD_TESTS', value: 'run' } }
       steps {
         sh 'ci/scripts/hil.sh'
       }
