@@ -68,8 +68,8 @@ has no frame, the screen behind it turns dark blue and No keeps the focus.
 The command palette (ctrl+p) still offers the Textual themes; a dark one
 brings back the Textual palette, since ANSI replaces only the light one.
 
-Version: 1.5
-Date: 13/11/2026
+Version: 1.6
+Date: 15/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  09/11/2026  Initial version.
@@ -78,6 +78,7 @@ History:
   1.3  11/11/2026  Export the report of the last run, in a worker, from the Export button, F4 or ctrl+y.
   1.4  11/11/2026  Open with the dialog theme and its ANSI palette; dialog-style Yes or No box.
   1.5  13/11/2026  Progress box: Export by its real steps, and a Connection box while the session or port is lost.
+  1.6  15/11/2026  F6/ctrl+b works under the Connection box and closes it.
 """
 
 import collections
@@ -132,6 +133,7 @@ CONNECTION_LOST = "Connection lost: press Recover (F7/^R) or Connect (F5/^N)"
 BOX_KEYS = (  # Application keys still active under the progress box
     Binding("f7,ctrl+r", "app.recover", "Recover", key_display="F7/^R"),
     Binding("f5,ctrl+n", "app.connect", "Connect", key_display="F5/^N"),
+    Binding("f6,ctrl+b", "app.disconnect", "Disconnect", key_display="F6/^B"),
 )
 
 
@@ -676,6 +678,10 @@ class HilApp(App):
     def action_disconnect(self) -> None:
         if not self.busy and self.session.state not in (State.DISCONNECTED, State.RUNNING):
             self.session.disconnect()
+            if self.connection_lost:  # A wanted disconnect: the Connection box has nothing left to say
+                self.connection_lost = False
+                if self.box is not None and self.screen is self.box:  # Textual dismisses only the top screen
+                    self.box.dismiss()
 
     @on(Button.Pressed, "#recover")
     def action_recover(self) -> None:
