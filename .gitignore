@@ -7,6 +7,9 @@
 # Claude Code settings: permissions granted on this machine only
 .claude/
 
+# Phase F plan: kept on this machine only
+/cd/README.md
+
 # Bytecode from the Python tools
 __pycache__/
 
