@@ -68,8 +68,8 @@ has no frame, the screen behind it turns dark blue and No keeps the focus.
 The command palette (ctrl+p) still offers the Textual themes; a dark one
 brings back the Textual palette, since ANSI replaces only the light one.
 
-Version: 1.6
-Date: 15/11/2026
+Version: 1.7
+Date: 16/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  09/11/2026  Initial version.
@@ -79,6 +79,7 @@ History:
   1.4  11/11/2026  Open with the dialog theme and its ANSI palette; dialog-style Yes or No box.
   1.5  13/11/2026  Progress box: Export by its real steps, and a Connection box while the session or port is lost.
   1.6  15/11/2026  F6/ctrl+b works under the Connection box and closes it.
+  1.7  16/11/2026  The run refresh timer does nothing once the screens are gone, at exit.
 """
 
 import collections
@@ -596,6 +597,8 @@ class HilApp(App):
         under it. A scenario waits for its prompt anyway, and the flash question
         comes after the run.
         """
+        if not self.screen_stack:  # The application is closing: no screen left to update
+            return
         if isinstance(self.screen, ConfirmScreen):
             return
         for _ in range(min(len(self.run_events), RUN_BATCH)):
