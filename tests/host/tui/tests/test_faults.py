@@ -14,7 +14,8 @@ Connection box only for a lost port or session, the application still
 running, then the fault cleared and the key of that next step (Connect or
 Recover, under the box when there is one) back to CONNECTED in the same
 application. Also: the three faults give three different messages, Disconnect
-works in each state it is offered, Quit during a real pytest run asks first,
+works in each state it is offered, under the Connection box too, and closes
+that box, Quit during a real pytest run asks first,
 a No keeps the run and a Yes stops its whole process group, and the next
 launch checks the board again (reset and banner).
 
@@ -22,11 +23,12 @@ Not tested here: a real USB unplug (by hand on the board), the port lock
 between programs (test_session.py), minicom, which takes no lock (a limit
 documented in ci/README.md), and the timer gap of the interface (E30).
 
-Version: 1.0
+Version: 1.1
 Date: 15/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  15/11/2026  Initial version.
+  1.1  15/11/2026  Disconnect straight from the Connection box, without Escape.
 """
 
 import asyncio
@@ -309,11 +311,11 @@ def test_disconnect_available(state):
         await ui.until(pilot, app, state)
         assert not app.query_one("#disconnect", Button).disabled
         resets = rig.resets
-        if boxes(app):
-            await pilot.press("escape")  # The Connection box passes only Recover and Connect
-            await wait_for(pilot, lambda: not boxes(app), "the box to close")
-        await pilot.press("ctrl+b")
+        await ui.settle(pilot, app)
+        assert bool(boxes(app)) == (state is State.SESSION_LOST)
+        await pilot.press("ctrl+b")  # Under the Connection box when there is one
         await ui.until(pilot, app, State.DISCONNECTED)
+        await wait_for(pilot, lambda: not boxes(app), "the box to close")
         assert rig.port.closed
         assert rig.resets == resets  # Disconnect does not reset the board
 
