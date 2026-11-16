@@ -21,12 +21,13 @@ or catalogue.
 Not tested here: the real port and board (E16), the make targets, and the
 rendering in a real terminal (the VS Code key capture was checked by hand).
 
-Version: 1.1
-Date: 13/11/2026
+Version: 1.2
+Date: 16/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  09/11/2026  Initial version.
   1.1  13/11/2026  Wider timeouts of the fake bench and a longer wait: a loaded CI host missed the 0.3 s answer.
+  1.2  16/11/2026  CAPS pages limited by the 128 byte line, as hil-bench: 8 names and next=16 passed it.
 """
 
 import asyncio
@@ -52,7 +53,8 @@ CATALOG = load()
 NAMES = CATALOG.names()
 BANNER = b"READY name=hil-bench fw=1.3.0 proto=1.3 build=abc1234 reset=PIN reset_flags=0x04000000\r\n"
 SW_BANNER = BANNER.replace(b"reset=PIN reset_flags=0x04000000", b"reset=SW reset_flags=0x14000000")
-CAPS_PAGE = 8  # Names per CAPS page, as hil-bench
+CAPS_PAGE = 8  # Names per CAPS page at most; the line length decides first, as in hil-bench
+LINE_MAX_LEN = 128  # Bytes of a line without its terminator (tests/protocol.md section 2.2)
 HOLDER = "python3 -m serial.tools.miniterm (PID 42)"
 SIZE = (120, 36)
 WAIT = 6.0  # Seconds a test waits for a state, well above the response timeout
@@ -106,15 +108,25 @@ class Rig:
         if command == "HELLO":
             body = "status=OK name=hil-bench proto=1.3 fw=1.3.0 build=abc1234"
         elif command == "CAPS":
-            start = int(tokens.get("start", "0"))
-            body = f"status=OK total={len(self.caps)} start={start} names={','.join(self.caps[start:start + CAPS_PAGE])}"
-            if start + CAPS_PAGE < len(self.caps):
-                body += f" next={start + CAPS_PAGE}"
+            body = self.caps_page(request_id, int(tokens.get("start", "0")))
         elif "bad" in tokens.values():
             body = "status=ERR code=INVALID_ARGUMENT"
         else:
             body = " ".join(["status=OK"] + [f"{key}={value}" for key, value in tokens.items()])
         return f"RESULT id={request_id} {body}\r\nEND id={request_id}\r\n".encode()
+
+    def caps_page(self, request_id: str, start: int) -> str:
+        """Whole names while the line, next included, stays within LINE_MAX_LEN (commands.c Caps)."""
+        total = len(self.caps)
+        head = f"RESULT id={request_id} status=OK total={total} start={start} names="
+        end = start + 1  # One name at least, as hil-bench
+        while end < total and end - start < CAPS_PAGE:
+            tail = f" next={end + 1}" if end + 1 < total else ""
+            if len(head + ",".join(self.caps[start:end + 1]) + tail) > LINE_MAX_LEN:
+                break
+            end += 1
+        body = f"status=OK total={total} start={start} names={','.join(self.caps[start:end])}"
+        return body + (f" next={end}" if end < total else "")
 
     def open(self, serial_config, timeout, name):
         if self.holder is not None:
