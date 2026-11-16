@@ -19,11 +19,12 @@ Not tested here: the command in the real firmware, hil_protocol.h and a HIL
 test on the board. That is the C5 proof on a throwaway branch (README.md
 section 7), checked by hand.
 
-Version: 1.0
+Version: 1.1
 Date: 16/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  16/11/2026  Initial version.
+  1.1  16/11/2026  No short CAPS pages: the fake firmware pages by line length since test_ui_commands.py 1.2.
 """
 
 import ast
@@ -73,15 +74,9 @@ def test_button_level():
     assert True
 '''
 RUN_WAIT = 30.0
-CAPS_PAGE = 6  # Names per CAPS page of the fake firmware: 8 names and "next=16" pass the 128 byte line
 
 
 # The new command, test and scenario
-
-@pytest.fixture(autouse=True)
-def short_caps_pages(monkeypatch):
-    if textual is not None:
-        monkeypatch.setattr(ui, "CAPS_PAGE", CAPS_PAGE)
 
 @pytest.fixture
 def catalog(tmp_path):
