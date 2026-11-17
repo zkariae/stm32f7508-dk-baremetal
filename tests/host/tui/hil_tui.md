@@ -5,8 +5,8 @@
 \brief      Commands and keys of the HIL bench TUI, and its pytest event stream.
 
 \author     Z. BEN-AKKA
-\version    1.6
-\date       13/11/2026
+\version    1.7
+\date       17/11/2026
 
 \section tui_hil_tui_md_version_history Version history
 | Version | Date       | Author      | Description      |
@@ -18,6 +18,7 @@
 | 1.4     | 11/11/2026 | Z. BEN-AKKA | Fix the JUnit counting rule of a teardown error: it changed in pytest 9.1. |
 | 1.5     | 11/11/2026 | Z. BEN-AKKA | Add the Export key and the report of a run. |
 | 1.6     | 13/11/2026 | Z. BEN-AKKA | Add the dialog look, the command palette and the progress box. |
+| 1.7     | 17/11/2026 | Z. BEN-AKKA | Add Disconnect to the keys under the Connection box. |
 ****************************
 -->
 
@@ -79,11 +80,12 @@ connection.
 | Event | Box |
 |:--|:--|
 | Export | "Export": the gauge goes to 25, 50, 75 and 100% as the report is built, then written. "Export done" closes after 2.5 s; `Export failed: <error>` stays until Escape |
-| Session lost or port lost | "Connection": a block moves to and fro. F7/ctrl+r (Recover) and F5/ctrl+n (Connect) still work under the box |
+| Session lost or port lost | "Connection": a block moves to and fro. F7/ctrl+r (Recover), F5/ctrl+n (Connect) and F6/ctrl+b (Disconnect) still work under the box; Disconnect also closes it |
 | Connected again | "Connection back" at 100%, closes after 2 s |
 
 There are never two boxes: a new event replaces the content of the open
-one. Disconnect, a busy port and the port released for a run show no box.
+one. Disconnect closes the Connection box and opens none; a busy port and
+the port released for a run show no box.
 The message line under the box keeps the details.
 
 ## Tests tab
