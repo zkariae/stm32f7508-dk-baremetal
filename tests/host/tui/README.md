@@ -5,8 +5,8 @@
 \brief      HIL bench TUI: frozen criteria, architecture and phase E plan.
 
 \author     Z. BEN-AKKA
-\version    1.0
-\date       09/11/2026
+\version    1.1
+\date       17/11/2026
 
 \details
   Reference document of the terminal interface that drives the HIL bench
@@ -19,6 +19,7 @@
 | Version | Date       | Author      | Description      |
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 09/11/2026 | Z. BEN-AKKA | Initial version. |
+| 1.1     | 17/11/2026 | Z. BEN-AKKA | Add the proof of each criterion, the run folder files, the minicom limit and the CI board skip. |
 ****************************
 -->
 
@@ -29,7 +30,8 @@
 A terminal tool, built with [Textual](https://textual.textualize.io/), that
 drives the HIL bench with buttons and lists. It sends commands without typing
 the protocol, runs the tests, shows the UART traffic and a readable result,
-and exports the test report.
+and exports the test report. The user guide (screens, keys, runs and
+reports) is `hil_tui.md`.
 
 The tool reuses `SerialAdapter`, `Board` and `Programmer` from
 `tests/host/hil/adapters/`. It changes neither the firmware nor the protocol
@@ -58,6 +60,8 @@ of the developer.
 |:--|:--|
 | `pytest` and `uart_rx_check.py` open the serial port themselves | The TUI closes the port before a run, and connects again after it. The traffic of a run is not read on the port |
 | From E7 and E8, pytest and `uart_rx_check.py` lock the port, as `miniterm` and the TUI do | **Keep the TUI closed while a Jenkins check runs**: the check would fail at once on a busy port |
+| `minicom` takes no `flock` on the port | The exclusion does not cover it: a documented limit (`ci/README.md` section 4.2). Close it before a run or a Jenkins check |
+| A Jenkins check flashes the shared board | Before a check by hand, read `fw=` and `build=` in the banner: the board may hold another build |
 | `CAPS` gives names, never arguments | The forms come from a catalogue |
 | `SerialAdapter` only listens during a transaction and is not thread-safe | One thread owns the port and also listens while idle |
 | The `hil.serial` logger already traces TX and RX | A `logging.Handler` feeds the monitor. It changes no log level, otherwise the `make` output would leave `pytest.log` |
@@ -138,7 +142,9 @@ form can also send a deliberately invalid value.
 ### 4.3 Runs
 
 Each run has its own folder, `work/hil-results/<date-time>-<suite>/`, with
-`events.jsonl`, `junit.xml`, `pytest.log`, `report.md` and `report.html`.
+`events.jsonl`, `junit.xml`, `pytest.log`, a copy of `bench.yaml` and
+`run.json` (selection, commit, verdict and totals, written atomically).
+Export adds `report.md` and `report.html`.
 
 - The plugin is loaded with `-p hil_events`, alongside `--log-file` and
   `--junitxml`. The pytest configuration does not change.
@@ -173,8 +179,8 @@ steps:
 - Python 3.10, pyserial, PyYAML and pytest, as for `tests/host/hil/`.
 - Textual 8.2.8, pinned. `core/` does not import it, so the catalogue and
   session tests need no installation.
-- The `ui/` tests run in the CI once Textual is installed for the `jenkins`
-  user, before sub-step E15:
+- The `ui/` tests run in the CI, with Textual installed for the `jenkins`
+  user:
 
 ```bash
 python3 -m pip install --user textual==8.2.8
@@ -210,6 +216,9 @@ The rules of `ci/README.md` section 9 apply, with these additions:
 - Pull requests pass one at a time, since a branch must be up to date with its
   target. Each sub-branch starts from the integration branch just merged.
 - The board stays attached to WSL for every check, and the TUI stays closed.
+- A pull request that only changes `tests/host/tui/`, `work/doc_zak/` or
+  `*.md` files skips the board stages of the check (`ci/README.md`
+  section 4.1).
 - The C5 proof uses a throwaway branch that holds several files, as a
   deliberate exception to the one file rule. It gets no pull request, is never
   merged and is deleted afterwards.
@@ -261,3 +270,20 @@ sub-step adds to it.
 | E32 | `ci/README.md` | 5 | C6 |
 | E33 | `work/doc_zak/plan_test_hil.md` | 5 | — |
 | E34 | `tests/host/tui/README.md` | 5 | C6 |
+
+## 10. Proofs
+
+Where each criterion of section 2 is proved. The test files are in
+`tests/host/tui/tests/`; `@board` tests need the board.
+
+| # | Proof |
+|:-:|:--|
+| C1 | `test_catalog.py`: names of `hil_protocol.h` and of the catalogue in both directions, confirmation of flash writes. `test_ui_commands.py`: forms, sending, answers and rejected values. `test_catalog_board.py` (`@board`): each command with its default arguments, a rejected value leaves the LED unchanged |
+| C2 | `test_runner.py`: pytest, T1–T8 and scenario runs, Stop, Stop deferred during a flash, second Stop forces it. `scenarios/lcd_colors.yaml` runs on the board |
+| C3 | `test_runner.py`: counters from the events equal to `junit.xml`, same exit code. `test_display_latency.py`: TX and RX lines and their times follow `pytest.log`, delay measured below the limit |
+| C4 | `test_report.py`: totals equal to `junit.xml` and `run.json`, `INTERRUPTED` after Stop, report rebuilt from `events.jsonl` after a kill, Export writes both files |
+| C5 | `test_extensibility.py`: a new command, scenario or pytest file appears without code change, and the TUI code names no command. Throwaway branch with `DELAY_MS` (firmware, `hil_protocol.h`, catalogue, test, scenario): in `tests/host/tui/` the diff is only `scenarios/delay_ms.yaml`; recorded in a comment of issue #13 |
+| C6 | `test_session.py`: busy port with its holder, port lost, timed out request never sent again, Disconnect without reset. `test_faults.py`: each fault with its own message, Disconnect, quit during a run, board checked at the next launch. `test_responsiveness.py`: timer gap at most 500 ms (117 ms over the 216 board tests). `minicom`: limit documented in `ci/README.md` section 4.2 |
+
+Results on 17/11/2026, integration build `fw=1.3.0 proto=1.3`: TUI tests
+283 passed without the board, HIL suite 216 passed on the board.
