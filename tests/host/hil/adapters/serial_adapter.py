@@ -18,20 +18,28 @@ are the two halves of transaction(), for a raw request with a valid ID.
 Every line sent and received is logged at INFO on the hil.serial logger, as
 text, or as escaped bytes when it holds a byte outside 0x20-0x7E; pytest
 --log-cli-level=INFO shows them live in the terminal.
+open() locks the port exclusively (flock), as miniterm does, so two programs
+never share the received bytes; a busy port raises PortBusy naming the
+program that holds it, from /proc/locks. The lock is advisory: a program that
+does not take it can still open the port.
 
-Version: 1.2
-Date: 26/10/2026
+Version: 1.3
+Date: 09/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  26/10/2026  Initial version.
   1.1  26/10/2026  Log TX and RX lines at INFO, non-printable bytes escaped.
   1.2  26/10/2026  Add raw bytes, other baud rates and reading records until silence.
+  1.3  09/11/2026  Lock the port exclusively; a busy port names the program that holds it.
 """
 
+import errno
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from adapters.outcomes import ProtocolFailure, UnexpectedReset
 
@@ -61,6 +69,43 @@ class RecordError(ValueError):
 
 class SessionExhausted(RuntimeError):
     """ID 65535 was used: the board must be reset before the next request (section 5.1)."""
+
+
+class PortBusy(RuntimeError):
+    """Another program holds the exclusive lock of the serial port: a bench error, not an outcome."""
+
+    def __init__(self, port: str, holder: str | None):
+        super().__init__(f"{port} is busy: held by {holder or 'an unknown program'}")
+        self.port = port
+        self.holder = holder
+
+
+HOLDER_MAX_LEN = 100  # Characters of the command line shown in PortBusy
+
+
+def port_holder(path: str, locks: str = "/proc/locks", proc: str = "/proc") -> str | None:
+    """Command line and PID of the process holding a flock on path, or None if not found."""
+    try:
+        info = os.stat(path)
+        table = Path(locks).read_text()
+    except OSError:
+        return None
+    # /proc/locks names the file as major:minor:inode of its file system, major and minor in hex
+    node = f"{os.major(info.st_dev):02x}:{os.minor(info.st_dev):02x}:{info.st_ino}"
+    for line in table.splitlines():
+        fields = line.split()
+        # "1: FLOCK ADVISORY WRITE <pid> <node> 0 EOF"; "1: -> FLOCK ..." is a waiter
+        if len(fields) < 6 or fields[1] != "FLOCK" or fields[5] != node:
+            continue
+        pid = fields[4]
+        try:
+            command = Path(proc, pid, "cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace").strip()
+        except OSError:
+            command = ""
+        if len(command) > HOLDER_MAX_LEN:
+            command = command[: HOLDER_MAX_LEN - 3] + "..."
+        return f"{command} (PID {pid})" if command else f"PID {pid}"
+    return None
 
 
 @dataclass(frozen=True)
@@ -135,22 +180,29 @@ class SerialAdapter:
 
     @classmethod
     def open(cls, serial_config: dict, response_timeout: float, port: str | None = None):
-        """Open the port described by the serial section of bench.yaml."""
+        """Open and lock the port described by the serial section of bench.yaml; PortBusy if held."""
         import serial  # pyserial; imported here so the parsers need no serial port
 
+        name = port or serial_config["port"]
         parities = {"none": serial.PARITY_NONE, "even": serial.PARITY_EVEN, "odd": serial.PARITY_ODD}
-        link = serial.serial_for_url(
-            port or serial_config["port"],
-            baudrate=serial_config["baudrate"],
-            bytesize=serial_config["bytesize"],
-            parity=parities[serial_config["parity"]],
-            stopbits=serial_config["stopbits"],
-            timeout=response_timeout,
-            write_timeout=response_timeout,
-            xonxoff=serial_config["flow_control"] == "xonxoff",
-            rtscts=serial_config["flow_control"] == "rtscts",
-            dsrdtr=False,
-        )
+        try:
+            link = serial.serial_for_url(
+                name,
+                baudrate=serial_config["baudrate"],
+                bytesize=serial_config["bytesize"],
+                parity=parities[serial_config["parity"]],
+                stopbits=serial_config["stopbits"],
+                timeout=response_timeout,
+                write_timeout=response_timeout,
+                xonxoff=serial_config["flow_control"] == "xonxoff",
+                rtscts=serial_config["flow_control"] == "rtscts",
+                dsrdtr=False,
+                exclusive=True,  # flock before any line change: a refused open leaves the holder alone
+            )
+        except serial.SerialException as error:
+            if error.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                raise PortBusy(name, port_holder(name)) from None
+            raise
         return cls(link, response_timeout)
 
     def close(self) -> None:

@@ -6,15 +6,15 @@
 # \brief      Run the CI checks that need no board.
 #
 # \author     Z. BEN-AKKA
-# \version    1.0
-# \date       03/11/2026
+# \version    1.1
+# \date       09/11/2026
 #
 # \details
 #   Build stage of the Jenkins pipeline (ci/README.md section 4), also run by
 #   hand before pushing a branch. Builds every image, checks the C format,
-#   runs the host unit tests against the fake firmware and collects the HIL
-#   tests without running them. Stops at the first failing check with a
-#   non-zero exit code.
+#   runs the host unit tests against the fake firmware, runs the TUI tests
+#   and collects the HIL tests without running them. Stops at the first
+#   failing check with a non-zero exit code.
 #
 #     ci/scripts/build.sh           keep work/build/ from previous builds
 #     ci/scripts/build.sh --clean   run make clean first (Jenkins)
@@ -25,6 +25,7 @@
 # | Version | Date       | Author      | Description      |
 # |:-------:|:----------:|:------------|:-----------------|
 # | 1.0     | 03/11/2026 | Z. BEN-AKKA | Initial version. |
+# | 1.1     | 09/11/2026 | Z. BEN-AKKA | Run the TUI tests (catalogue against hil_protocol.h). |
 # ****************************
 # */
 
@@ -46,6 +47,10 @@ dev/scripts/format_cxx.sh --check
 # Adapters against the fake firmware (tests/host/hil/unit), no board
 echo "build.sh: unit tests"
 python3 -m pytest tests/host/hil -m unit -q
+
+# TUI catalogue against hil_protocol.h and form checks, no board (tests/host/tui)
+echo "build.sh: TUI tests"
+python3 -m pytest tests/host/tui -q
 
 # Imports every test file and expands the parametrize lists, runs nothing
 echo "build.sh: test collection"

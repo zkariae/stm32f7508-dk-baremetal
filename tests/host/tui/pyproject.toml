@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: MIT
+# ****************************
+# \file       tests/host/tui/pyproject.toml
+# \brief      HIL bench TUI: Python dependencies and pytest settings.
+#
+# \author     Z. BEN-AKKA
+# \version    1.0
+# \date       09/11/2026
+#
+# \details
+#   Run from the repository root with: python3 -m pytest tests/host/tui
+#   This file makes tests/host/tui the pytest root, apart from tests/host/hil,
+#   so the HIL total stays unchanged. ../hil is on the path so that core/
+#   reuses adapters/ without a copy. Textual is pinned (README.md section 5).
+#   By default no test touches the board; -m board selects the board tests,
+#   -m ui the Textual tests.
+#
+# \section tui_pyproject_toml_version_history Version history
+# | Version | Date       | Author      | Description      |
+# |:-------:|:----------:|:------------|:-----------------|
+# | 1.0     | 09/11/2026 | Z. BEN-AKKA | Initial version. |
+# ****************************
+
+[project]
+name = "stm32f7508-dk-hil-tui"
+version = "0.5.0"
+description = "Terminal interface of the hil-bench test bench"
+requires-python = ">=3.10"
+dependencies = [
+  "textual==8.2.8",
+  "pyserial>=3.5",
+  "PyYAML>=5.4",
+  "pytest>=7.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+pythonpath = [".", "../hil"]
+markers = [
+  "board: needs the board attached to the bench (tests/test_*_board.py and fault tests)",
+  "ui: drives the Textual interface headless, needs Textual installed",
+]
+# The board tests run only on request: python3 -m pytest tests/host/tui -m board
+addopts = "-m 'not board'"

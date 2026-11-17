@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: MIT
+# ****************************
+# \file       tests/host/tui/scenarios/lcd_colors.yaml
+# \brief      Scenario: fill the LCD with each primary colour, read two corners back, ask the operator.
+#
+# \author     Z. BEN-AKKA
+# \version    1.0
+# \date       10/11/2026
+#
+# \details
+#   Played by the TUI in the open session (README.md section 4.5, format in
+#   core/scenario.py). For each colour: LCD_FILL, LCD_PIXEL at the first and
+#   the last pixel of the framebuffer, which must read back the colour, then
+#   the operator confirms the whole screen. A wrong pixel or a No is
+#   FUNCTIONAL_ERROR and the next colours still run.
+#
+#   Values are RGB565 (tests/protocol.md section 6.12), quoted so YAML keeps
+#   them as text; LCD_PIXEL answers in uppercase (section 6.19). Black comes
+#   last, so the panel is left dark.
+#
+# \section tui_lcd_colors_yaml_version_history Version history
+# | Version | Date       | Author      | Description      |
+# |:-------:|:----------:|:------------|:-----------------|
+# | 1.0     | 10/11/2026 | Z. BEN-AKKA | Initial version. |
+# ****************************
+
+name: LCD colour check
+description: Fill the panel in red, green, blue, white and black; read two corners back and confirm by eye.
+steps:
+  - {command: LCD_INIT}
+
+  - {command: LCD_FILL, args: {color: "0xF800"}}
+  - {command: LCD_PIXEL, args: {x: 0, y: 0}, expect: {color: "0xF800"}}
+  - {command: LCD_PIXEL, args: {x: 479, y: 271}, expect: {color: "0xF800"}}
+  - {prompt: "Is the whole screen red?"}
+
+  - {command: LCD_FILL, args: {color: "0x07E0"}}
+  - {command: LCD_PIXEL, args: {x: 0, y: 0}, expect: {color: "0x07E0"}}
+  - {command: LCD_PIXEL, args: {x: 479, y: 271}, expect: {color: "0x07E0"}}
+  - {prompt: "Is the whole screen green?"}
+
+  - {command: LCD_FILL, args: {color: "0x001F"}}
+  - {command: LCD_PIXEL, args: {x: 0, y: 0}, expect: {color: "0x001F"}}
+  - {command: LCD_PIXEL, args: {x: 479, y: 271}, expect: {color: "0x001F"}}
+  - {prompt: "Is the whole screen blue?"}
+
+  - {command: LCD_FILL, args: {color: "0xFFFF"}}
+  - {command: LCD_PIXEL, args: {x: 0, y: 0}, expect: {color: "0xFFFF"}}
+  - {command: LCD_PIXEL, args: {x: 479, y: 271}, expect: {color: "0xFFFF"}}
+  - {prompt: "Is the whole screen white?"}
+
+  - {command: LCD_FILL, args: {color: "0x0000"}}
+  - {command: LCD_PIXEL, args: {x: 0, y: 0}, expect: {color: "0x0000"}}
+  - {command: LCD_PIXEL, args: {x: 479, y: 271}, expect: {color: "0x0000"}}
+  - {prompt: "Is the whole screen black?"}

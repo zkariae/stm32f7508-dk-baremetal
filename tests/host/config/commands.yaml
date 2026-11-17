@@ -1,0 +1,163 @@
+# SPDX-License-Identifier: MIT
+# ****************************
+# \file       tests/host/config/commands.yaml
+# \brief      HIL command catalogue: arguments, defaults and effects of each command.
+#
+# \author     Z. BEN-AKKA
+# \version    1.0
+# \date       09/11/2026
+#
+# \details
+#   CAPS gives the command names only; this catalogue tells how to ask for
+#   each command, so the TUI builds its forms from data (tests/host/tui/
+#   README.md section 4.2). Source: tests/protocol.md section 6, not the
+#   firmware. The order follows the CAPS list of protocol 1.3.
+#
+#   Entry fields:
+#     group     Display group.
+#     summary   One line shown next to the command.
+#     spec      Section of tests/protocol.md.
+#     effect    destructive or reboots: the TUI asks for confirmation.
+#     requires  Command to send first; a warning, never a block.
+#     args      Arguments, in the order they are sent.
+#
+#   Argument types, all with an optional default and required (true if
+#   absent):
+#     enum      values: list of accepted strings.
+#     int       min, max: unsigned decimal, no leading zeros.
+#     hex       digits: [min, max] after 0x; min, max; multiple_of.
+#     hexdata   bytes: [min, max]; two hexadecimal digits per byte.
+#     letter    min, max: one uppercase letter.
+#     color     RGB565, 0x and 1 to 4 digits (section 6.12).
+#
+#   Checks between arguments (QSPI_READ addr + len, QSPI_WRITE page) stay
+#   with the firmware, which answers INVALID_ARGUMENT. Timeouts come from
+#   bench.yaml. The defaults are safe on the board: QSPI writes stay in the
+#   test area and writing FF changes no bit.
+#
+# \section commands_yaml_version_history Version history
+# | Version | Date       | Author      | Description      |
+# |:-------:|:----------:|:------------|:-----------------|
+# | 1.0     | 09/11/2026 | Z. BEN-AKKA | Initial version. |
+# ****************************
+
+schema_version: 1
+
+commands:
+  HELLO:
+    group: Session
+    summary: Check the command path and read the firmware identity
+    spec: "6.2"
+    args: {}
+
+  CAPS:
+    group: Session
+    summary: List the supported commands, one page at a time
+    spec: "6.3"
+    args:
+      start: {type: int, min: 0, max: 254, required: false, default: 0}
+
+  LED_SET:
+    group: LED
+    summary: Drive the user LED LD1
+    spec: "6.4"
+    args:
+      # Quoted: YAML 1.1 reads bare on and off as booleans
+      state: {type: enum, values: ["on", "off", "toggle"], default: "toggle"}
+
+  LED_GET:
+    group: LED
+    summary: Read the state of LD1
+    spec: "6.5"
+    args: {}
+
+  QSPI_ID:
+    group: QSPI
+    summary: Read the JEDEC identifier of the flash
+    spec: "6.7"
+    args: {}
+
+  QSPI_READ:
+    group: QSPI
+    summary: Read 1 to 32 bytes of the flash
+    spec: "6.8"
+    args:
+      addr: {type: hex, digits: [1, 8], min: 0x00000000, max: 0x00FFFFFF, default: 0x00FF0000}
+      len: {type: int, min: 1, max: 32, default: 4}
+
+  QSPI_ERASE:
+    group: QSPI
+    summary: Erase one 4 KB block of the test area
+    spec: "6.9"
+    effect: destructive
+    args:
+      addr: {type: hex, digits: [1, 8], min: 0x00FF0000, max: 0x00FFF000, multiple_of: 4096, default: 0x00FF0000}
+
+  QSPI_WRITE:
+    group: QSPI
+    summary: Program 1 to 32 bytes of the test area
+    spec: "6.10"
+    effect: destructive
+    args:
+      addr: {type: hex, digits: [1, 8], min: 0x00FF0000, max: 0x00FFFFFF, default: 0x00FF0000}
+      data: {type: hexdata, bytes: [1, 32], default: "FF"}
+
+  GPIO_CONFIG:
+    group: GPIO
+    summary: Read the mode, alternate function and level of one pin
+    spec: "6.11"
+    args:
+      port: {type: letter, min: A, max: K, default: I}
+      pin: {type: int, min: 0, max: 15, default: 1}
+
+  LCD_INIT:
+    group: LCD
+    summary: Bring up the panel with a black frame
+    spec: "6.13"
+    args: {}
+
+  LCD_CLOCK:
+    group: LCD
+    summary: Read the PLLSAI state and the pixel clock
+    spec: "6.14"
+    requires: LCD_INIT
+    args: {}
+
+  LCD_TIMING:
+    group: LCD
+    summary: Read the panel timings from the LTDC
+    spec: "6.15"
+    requires: LCD_INIT
+    args: {}
+
+  LCD_LAYER:
+    group: LCD
+    summary: Read the configuration of layer 1
+    spec: "6.16"
+    requires: LCD_INIT
+    args: {}
+
+  LCD_SCAN:
+    group: LCD
+    summary: Count the frames scanned in a time window
+    spec: "6.17"
+    requires: LCD_INIT
+    args:
+      ms: {type: int, min: 100, max: 1000, default: 100}
+
+  LCD_FILL:
+    group: LCD
+    summary: Fill the framebuffer with one colour
+    spec: "6.18"
+    requires: LCD_INIT
+    args:
+      color: {type: color, default: 0x0000}
+
+  LCD_PIXEL:
+    group: LCD
+    summary: Read one pixel of the framebuffer
+    spec: "6.19"
+    requires: LCD_INIT
+    args:
+      x: {type: int, min: 0, max: 479, default: 0}
+      y: {type: int, min: 0, max: 271, default: 0}
