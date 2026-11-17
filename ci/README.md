@@ -5,8 +5,8 @@
 \brief      CI/CD of the project: branch protection, Jenkins pipeline and phase D status.
 
 \author     Z. BEN-AKKA
-\version    1.5
-\date       05/11/2026
+\version    1.6
+\date       17/11/2026
 
 \details
   Reference document of the CI/CD set up in phase D. It records the branch
@@ -24,6 +24,7 @@
 | 1.3     | 04/11/2026 | Z. BEN-AKKA | Admin bypass for pull requests only. |
 | 1.4     | 04/11/2026 | Z. BEN-AKKA | D9 done. |
 | 1.5     | 05/11/2026 | Z. BEN-AKKA | D10 checks 1, 2, 3 and 5 passed. |
+| 1.6     | 17/11/2026 | Z. BEN-AKKA | Board stages skipped by file list; shared board and port lock, minicom limit; Jenkins restart after a JDK upgrade. |
 ****************************
 -->
 
@@ -34,7 +35,9 @@
 No regression may enter `main`, `develop` or a phase integration branch.
 Every merge into these branches goes through a GitHub pull request, and the
 pull request can only be merged once Jenkins has built every image and run
-the tests on the STM32F7508-DK board, with all of them passing.
+the tests on the STM32F7508-DK board, with all of them passing; a pull
+request that touches nothing that reaches the board skips the board tests
+(section 4.1).
 
 ## 2. Branch model
 
@@ -85,12 +88,13 @@ what triggered the build.
 
 | Trigger | Stages |
 |:--|:--|
-| Pull request to `main`, `develop` or `phaseX/integration` | Build → UART T1–T8 → HIL |
+| Pull request to `main`, `develop` or `phaseX/integration` | Changes → Build → UART T1–T8 → HIL; the two board stages are skipped when the pull request touches no file that reaches the board (section 4.1) |
 | Push to a branch (after a merge) | Build |
 
 | Stage | Script | Content |
 |:--|:--|:--|
 | Checkout | in the Jenkinsfile | Repository, then the submodule over HTTPS: `git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init` (the submodule is public, no key needed), then removes `work/hil-results/`, so that a build never reports the previous build's tests |
+| Changes | in the Jenkinsfile | Pull requests only: lists the files of the pull request and sets `BOARD_TESTS` to `run` or `skip` (section 4.1) |
 | Build | `ci/scripts/build.sh` | `make all`, `dev/scripts/format_cxx.sh --check`, `pytest -m unit`, `pytest --collect-only` |
 | UART T1–T8 | `ci/scripts/rx_check.sh` | `make uart-diag-flash`, `make reset`, `tests/host/rx_check/uart_rx_check.py` |
 | HIL | `ci/scripts/hil.sh` | `python3 -m pytest tests/host/hil --junitxml=work/hil-results/junit.xml` (flashes hil-bench) |
@@ -102,6 +106,44 @@ what triggered the build.
   board is a single shared resource.
 - `uart_rx_check.py` does not flash the board, so `rx_check.sh` flashes
   `uart-diag` first; the HIL stage then flashes `hil-bench` again.
+
+### 4.1 Board stages skipped
+
+A full board run takes several minutes, and a pull request that only
+changes the host TUI or a document cannot change what runs on the board.
+The Changes stage lists the files of the pull request with
+`git diff --name-only origin/$CHANGE_TARGET...HEAD`: three dots compare
+with the merge base, so the list is right whether Jenkins built a merge
+commit or, for a branch made from the tip of its target, the branch itself.
+
+| Files of the pull request | `BOARD_TESTS` | UART T1–T8 and HIL |
+|:--|:--|:--|
+| Only `tests/host/tui/**`, `work/doc_zak/**` or `*.md` | `skip` | skipped, shown as such in the build; the check is green when Build passes |
+| Any other file | `run` | run |
+| Unknown (target not fetched, empty list) | `run` | run: a doubt never skips the board |
+
+The log of the Changes stage prints the files and `Board stages: run` or
+`skip`. Known limit: a pull request that only changes a Markdown file, such
+as `tests/protocol.md`, skips the board too. That is intended: no binary and
+no test changes; the next pull request that changes code runs the board.
+
+### 4.2 Shared board and port
+
+The board and its serial port serve Jenkins and the developer in turn.
+
+- One program at a time on `/dev/ttyACM0`. pytest (`tests/host/hil`),
+  `uart_rx_check.py`, miniterm and the TUI take an exclusive `flock` on the
+  port; a busy port gives `PortBusy`, naming the program that holds it, read
+  from `/proc/locks`.
+- minicom does not take this lock (it uses a lock file of its own), so it is
+  neither refused nor named: a known limit. Close minicom before a build, a
+  test run or the TUI.
+- During a Jenkins build, keep the TUI, miniterm and minicom closed: a
+  program that holds the port makes the UART T1–T8 or HIL stage fail on
+  `PortBusy`.
+- After a build, the board keeps the image of the branch Jenkins built. Before
+  a check by hand, read `fw=` and `build=` in the readiness banner, and flash
+  `hil-bench` again (`make hil-bench-flash`) if it is not the expected one.
 
 ## 5. Infrastructure
 
@@ -115,7 +157,7 @@ Jenkins on the developer PC (WSL2, Ubuntu 22.04) ── Multibranch job, Script 
 
 | Choice | Decision | Reason |
 |:--|:--|:--|
-| Jenkins host | Jenkins LTS installed in WSL2 with apt, run by systemd (`systemd=true` in `/etc/wsl.conf`), Java 21 | Same Ubuntu 22.04 as the developer: `arm-none-eabi-gcc` 10.3 and `clang-format` 14 give the same binaries and format check; direct USB access to the board |
+| Jenkins host | Jenkins LTS installed in WSL2 with apt, run by systemd (`systemd=true` in `/etc/wsl.conf`), Java 21. The running Jenkins keeps the JVM files that an apt upgrade of the JDK replaces: restart it afterwards (`sudo systemctl restart jenkins`, done by the developer) | Same Ubuntu 22.04 as the developer: `arm-none-eabi-gcc` 10.3 and `clang-format` 14 give the same binaries and format check; direct USB access to the board |
 | Web access | `http://localhost:8090`, from Windows and inside WSL; port set in a systemd override | Port 8080 is taken by a Windows service on this PC and WSL only relays it over IPv6 (`ci/jenkins/setup.md` sections 2 and 3) |
 | Job | Multibranch Pipeline, GitHub Branch Source, Script Path `ci/Jenkinsfile` | All CI files stay in `ci/` |
 | Trigger | Periodic scan of GitHub every 5 minutes, no webhook | WSL2 is not reachable from the Internet; every connection goes out from the PC and no port is exposed. A pull request starts within 5 minutes, or at once with "Scan now" |
