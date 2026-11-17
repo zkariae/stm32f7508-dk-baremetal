@@ -5,13 +5,14 @@
 \brief      HIL test plan of the STM32F7508-DK project.
 
 \author     Z. BEN-AKKA
-\version    1.3
-\date       04/11/2026
+\version    1.4
+\date       17/11/2026
 
 \details
   Describes the hardware-in-the-loop test bench: principle, layout of the
-  firmware and host files, protocol, test scope with its progress, Git
-  workflow and deliverables. The protocol itself is specified in
+  firmware and host files, the terminal user interface (TUI) that drives the
+  bench, protocol, test scope with its progress, Git workflow and
+  deliverables. The protocol itself is specified in
   tests/protocol.md; the bench phases are detailed in
   work/doc_zak/local/plan_hil_bench_phases.md.
 
@@ -22,6 +23,7 @@
 | 1.1     | 23/10/2026 | Z. BEN-AKKA | Show rx_check/ and the shared bench config. |
 | 1.2     | 03/11/2026 | Z. BEN-AKKA | Align the plan with the delivered bench (protocol 1.3, v0.3.0); translate it to English. |
 | 1.3     | 04/11/2026 | Z. BEN-AKKA | Add the CI: ci/ folder, pull request flow and Jenkins archiving. |
+| 1.4     | 17/11/2026 | Z. BEN-AKKA | Add the TUI (tests/host/tui/), the command catalogue, the run folders and reports, the CI board skip and v0.4.0. |
 ****************************
 -->
 
@@ -31,8 +33,10 @@
 
 Automate, from a PC, the programming, control and checking of the project on the STM32F7508-DK board. The PC runs the scenarios with pytest; a dedicated firmware receives the commands over UART, calls the board drivers and sends results back. ST-LINK/OpenOCD or DFU programs the target. External instruments complete the checks when a result must be verified physically.
 
+The operator drives the bench from a terminal user interface (TUI, `tests/host/tui/hil_tui.py`): it sends commands by hand, runs the pytest suite, tests T1 to T8 and YAML scenarios, follows their progress and exports a report. The TUI and pytest share the same adapters and the same port, never at the same time.
+
 ```text
-PC: runner + pytest + adapters
+PC: TUI (hil_tui.py) + runner + pytest + adapters
        ├── ST-LINK/OpenOCD or DFU ── programming/reset ──┐
        ├── virtual serial port ── commands/results ──────┤
        └── optional instruments ── measurements ─────────┤
@@ -71,19 +75,30 @@ The product applications stay in `dev/`. The validation firmware and the Python 
     │   │   ├── line.c               # Bounded line reception (LINE_TOO_LONG, BAD_FRAME)
     │   │   ├── protocol.c           # Request decoding and response writing
     │   │   ├── dispatch.c           # Routes each command to its handler
-    │   │   ├── commands.c           # Command table: HELLO, CAPS, LED, QSPI
+    │   │   ├── commands.c           # Command table; HELLO, CAPS, LED and QSPI commands
     │   │   ├── lcd_commands.c       # GPIO_CONFIG and LCD commands
     │   │   └── inc/                 # Headers, including hil_protocol.h (names, keys, codes, versions)
     │   └── uart_diag/
     │       └── main.c               # Raw echo image for tests T1 to T8
     └── host/
         ├── config/
-        │   └── bench.yaml            # Bench shared by rx_check/ and hil/: port, baud rate, delays, hardware options
+        │   ├── bench.yaml            # Bench shared by rx_check/, hil/ and tui/: port, baud rate, delays, hardware options
+        │   └── commands.yaml         # Command catalogue: arguments, types, defaults and help shown by the TUI
         ├── rx_check/                 # UART driver regression (uart-diag image)
         │   ├── uart_rx_check.py      # Tests T1 to T8
         │   ├── plans/
         │   │   └── uart_rx.yaml      # Parameters and expected results of T1 to T8
         │   └── run_tests.md          # Run commands
+        ├── tui/                      # Terminal user interface of the bench (tui/README.md)
+        │   ├── hil_tui.py            # Entry point
+        │   ├── hil_tui.md            # User guide: screens, keys, runs and reports
+        │   ├── pyproject.toml        # Dependencies (Textual) and pytest configuration
+        │   ├── core/                 # catalog, session, runner, suites, scenario, report
+        │   ├── ui/                   # app, commands_pane, tests_pane, monitor, progress_box, theme
+        │   ├── plugins/
+        │   │   └── hil_events.py     # pytest plugin: writes the test events read by the TUI
+        │   ├── scenarios/            # YAML scenarios (lcd_colors.yaml)
+        │   └── tests/                # TUI tests: fake firmware without board, @board tests on the board
         └── hil/                      # Protocol tests (hil-bench image)
             ├── pyproject.toml        # Python dependencies, pytest configuration and markers
             ├── conftest.py           # Loads the fixtures/board_fixtures.py plugin
@@ -124,6 +139,11 @@ The product applications stay in `dev/`. The validation firmware and the Python 
 - `cases/expected.py` holds the expected values; they come from the datasheets, not from the firmware.
 - `cases/test_*.py` holds the scenarios, their assertions and acceptance criteria.
 - `instruments.py` will be used only when a measuring instrument is available.
+- `config/commands.yaml` describes each command for the TUI; it names no command in the TUI code, so a new command only needs its catalogue entry (criterion C5 of `tests/host/tui/README.md`).
+- `tui/core/` holds the logic without display: catalogue, serial session built on the `hil/` adapters, run of pytest, T1 to T8 or a scenario, and report.
+- `tui/ui/` holds the screens: command pane, tests tab, monitor, progress box and theme.
+- `tui/plugins/hil_events.py` is loaded by pytest only during a TUI run; it streams the run to `events.jsonl` (tests, results, serial log), one line per event, so the TUI follows it live.
+- `serial_adapter.py` locks the port (`flock`): a second program that uses the adapters gets `PortBusy` with the name of the holder.
 
 The Makefile builds the `hil-bench` image from `tests/firmware/hil_bench/`, linking the BSP sources and the `dev/common/` modules; it also generates `hil_build.h`, the build ID reported by the firmware.
 
@@ -162,9 +182,9 @@ Battery ADC and RTC are not in the initial scope: these functions are not among 
 Once the GitHub rulesets are enabled (`ci/README.md` section 3), nothing is pushed directly to `main`, `develop` or `phaseX/integration`: every merge goes through a pull request, merged with "Merge commit" once the Jenkins check `continuous-integration/jenkins/pr-merge` is green.
 
 ```text
-main ──────────────── v0.1.0 ── v0.2.0 ── v0.3.0 ──
-                         ▲         ▲         ▲
-develop ─────────────────┴─────────┴─────────┴─────
+main ──────────────── v0.1.0 ── v0.2.0 ── v0.3.0 ── v0.4.0 ──
+                         ▲         ▲         ▲         ▲
+develop ─────────────────┴─────────┴─────────┴─────────┴─────
    └── phaseX/integration          ──► PR to develop, Jenkins check
          ├── phaseX/<task 1>       ──► PR to phaseX/integration, Jenkins check
          └── phaseX/<task 2>       ──► PR to phaseX/integration, Jenkins check
@@ -175,7 +195,8 @@ develop ─────────────────┴──────
 | `v0.1.0` | UART reception and tests T1 to T8 (`rx_check`, `uart-diag` image). |
 | `v0.2.0` | `hil-bench` firmware, pytest framework and protocol 1.0 conformance. |
 | `v0.3.0` | Protocol 1.3: LED, QSPI, GPIO and LCD commands with their tests. |
-| Phase D | CI with Jenkins: build and board tests required on every pull request (in progress, `ci/README.md`). |
+| `v0.4.0` | CI with Jenkins: build and board tests required on every pull request (`ci/README.md`). |
+| `v0.5.0` | Phase E: TUI of the bench, commands by hand, runs, progress and reports (in progress, `tests/host/tui/README.md`). |
 | Next | Bootloader and DFU, then campaign automation. |
 
 Order followed: foundation → protocol → firmware and runner → first integrated test → peripherals → bootloaders/DFU. The first integrated test was merged before the campaign was extended to the other functions.
@@ -186,14 +207,16 @@ A campaign follows this cycle: check the bench, build the image, program the tar
 
 Already in place: the serial log and the make output in `work/hil-results/pytest.log`, the JUnit report with `--junitxml`, and the classification of failures with `tests/protocol.md` section 7.3 (programming, start-up, protocol, functional…). Generated outputs go to `work/hil-results/` and are not tracked by Git.
 
-On every pull request, Jenkins runs the build, tests T1 to T8 and the HIL suite (`ci/Jenkinsfile`), and archives for each build the binaries, `pytest.log` and `junit.xml`; each build is tied to its Git commit.
+A run started from the TUI gets its own folder, `work/hil-results/<YYYYmmdd-HHMMSS>-<suite>/` (`pytest`, `uart-rx` or the scenario name). It holds `pytest.log`, `junit.xml`, `events.jsonl`, a copy of `bench.yaml` and `run.json` (selection, commands, Git commit, start time, verdict and totals). Export writes `report.md` and `report.html` in the same folder; the report can be rebuilt from these files even after the run was killed.
 
-Still to do: keep the bench configuration and the available measurements with each run, and `run_hil.py` for a full local campaign in one command.
+On every pull request, Jenkins runs the build, tests T1 to T8 and the HIL suite (`ci/Jenkinsfile`), and archives for each build the binaries, `pytest.log` and `junit.xml`; each build is tied to its Git commit. A pull request that only changes `tests/host/tui/`, `work/doc_zak/` or `*.md` files skips the board stages (`ci/README.md` section 4.1).
+
+Still to do: keep the available measurements with each run, and `run_hil.py` for a full campaign in one command without the TUI.
 
 ## 7. Next step
 
-The first increment (program, restart, receive the banner, send `HELLO` and check its response from pytest) is delivered, together with the LED, QSPI and LCD peripheral tests. The next steps are:
+The first increment (program, restart, receive the banner, send `HELLO` and check its response from pytest) is delivered, together with the LED, QSPI and LCD peripheral tests, the CI and the TUI, which already archives each run it starts in `work/hil-results/`. The next steps are:
 
 1. Bootloader: boot from QSPI, valid image and tampered image (`test_bootloader.py`).
 2. DFU: entry into the ROM bootloader, programming and restart (`test_dfu.py`).
-3. Automation: full campaign in one command (`run_hil.py`) and archiving of each run in `work/hil-results/`.
+3. Automation: full campaign in one command without the TUI (`run_hil.py`), using the same run folders.
