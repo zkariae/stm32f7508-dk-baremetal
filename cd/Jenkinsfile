@@ -1,0 +1,148 @@
+// SPDX-License-Identifier: MIT
+/*!
+****************************
+\file       cd/Jenkinsfile
+\brief      Declarative pipeline of the CD job: deliver a release-vX.Y.Z tag.
+
+\author     Z. BEN-AKKA
+\version    1.0
+\date       17/11/2026
+
+\details
+  Read by the second Multibranch Pipeline job (folder stm32f7508-dk-cd,
+  Script Path cd/Jenkinsfile), which discovers the release-v* tags only,
+  see cd/README.md section 6. Never uses the board, never creates, moves or
+  pushes a tag. The pipeline stops at the first failing stage, so nothing
+  is published unless the guards, the build, the package and its checks
+  passed:
+    Checkout  the tag, the submodule over HTTPS, origin/release and the
+              release-v* tags of origin (the tag itself read again from
+              origin, so its annotated object is the one checked);
+    Guards    tag format, annotated tag, HEAD = tag commit, commit in
+              origin/release, clean tree;
+    Build     ci/scripts/build.sh --clean, then the clean tree again;
+    Package   cd/scripts/package.sh;
+    Check     cd/scripts/check.sh (builds the flasher image);
+    Publish   cd/scripts/publish.sh with the folder credentials
+              ghcr-zkariae and github-release-zkariae.
+  Every sh step is single-quoted: the tag name and the tokens are read by
+  the shell from the environment, never interpolated by Groovy.
+
+\section cd_jenkinsfile_version_history Version history
+| Version | Date       | Author      | Description      |
+|:-------:|:----------:|:------------|:-----------------|
+| 1.0     | 17/11/2026 | Z. BEN-AKKA | Initial version. |
+****************************
+*/
+
+pipeline {
+  // One executor, shared with the CI: a delivery waits for a running CI build
+  agent any
+
+  options {
+    skipDefaultCheckout()     // Done in the Checkout stage, with the submodule
+    disableConcurrentBuilds()
+    timeout(time: 30, unit: 'MINUTES')
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+        // The submodule is public: HTTPS needs no key, unlike its git@ URL
+        sh 'git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init'
+        // The workspace is kept between builds: never deliver the last build's files
+        sh 'rm -rf work/release'
+        // The checkout of a tag fetches that tag only. The repository is public:
+        // these reads need no credential. The tag is forced from origin, and
+        // --prune drops the release-v* tags deleted on origin, for notes.sh.
+        sh '''
+          set -eu
+          git fetch --no-tags origin '+refs/heads/release:refs/remotes/origin/release'
+          git fetch --no-tags --prune origin '+refs/tags/release-v*:refs/tags/release-v*'
+        '''
+      }
+    }
+
+    stage('Guards') {
+      steps {
+        sh '''
+          set -eu
+          fail() {
+            echo "Guards: $*" >&2
+            exit 1
+          }
+          tag=${TAG_NAME:-}
+          [ -n "$tag" ] || fail "not a tag build: the CD job builds release-vX.Y.Z tags only"
+          echo "$tag" | grep -Eq '^release-v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$' ||
+            fail "$tag is not a release tag: expected release-vX.Y.Z, no leading zero"
+          kind=$(git cat-file -t "refs/tags/$tag" 2>/dev/null) || fail "tag $tag not found on origin"
+          [ "$kind" = tag ] || fail "$tag is a lightweight tag: a release tag is annotated"
+          commit=$(git rev-parse "refs/tags/$tag^{commit}")
+          [ "$(git rev-parse HEAD)" = "$commit" ] || fail "HEAD is not the commit of $tag"
+          git merge-base --is-ancestor "$commit" origin/release ||
+            fail "$commit ($tag) is not in origin/release: a release tag is set on release only"
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --short >&2
+            fail "the tree is not clean"
+          fi
+          echo "Guards: $tag is an annotated tag on $commit, in origin/release, tree clean"
+        '''
+      }
+    }
+
+    stage('Build') {
+      steps {
+        sh 'ci/scripts/build.sh --clean'
+        // hil_build.h would mark a changed tree -dirty: build outputs stay in work/
+        sh '''
+          set -eu
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --short >&2
+            echo "Build: the tree is not clean after the build" >&2
+            exit 1
+          fi
+        '''
+      }
+    }
+
+    stage('Package') {
+      steps {
+        sh 'cd/scripts/package.sh "$TAG_NAME"'
+      }
+    }
+
+    stage('Check') {
+      steps {
+        sh 'cd/scripts/check.sh "$TAG_NAME"'
+      }
+    }
+
+    stage('Publish') {
+      steps {
+        withCredentials([
+          usernamePassword(credentialsId: 'ghcr-zkariae',
+                           usernameVariable: 'GHCR_USER',
+                           passwordVariable: 'GHCR_TOKEN'),
+          string(credentialsId: 'github-release-zkariae', variable: 'GITHUB_TOKEN')
+        ]) {
+          sh 'cd/scripts/publish.sh "$TAG_NAME"'
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      archiveArtifacts allowEmptyArchive: true,
+                       artifacts: 'work/release/*.zip, work/release/*.zip.sha256, work/release/*/RELEASE_NOTES.md'
+      // The published image stays on GHCR: free the disk of the PC
+      sh '''
+        version=${TAG_NAME#release-v}
+        docker image rm "ghcr.io/zkariae/stm32f7508-dk-flasher:$version" \\
+          ghcr.io/zkariae/stm32f7508-dk-flasher:latest >/dev/null 2>&1 || true
+      '''
+    }
+  }
+}
