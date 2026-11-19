@@ -5,8 +5,8 @@
 # \brief      Build, flash and document project images for a board.
 #
 # \author     Z. BEN-AKKA
-# \version    1.14
-# \date       29/10/2026
+# \version    1.15
+# \date       19/11/2026
 #
 # \details
 #   Says what to build: the applications, their sources, modules and
@@ -23,7 +23,8 @@
 #   hil-bench also gets hil_build.h, the git revision it was built from, for
 #   its readiness banner.
 #   07-lcd-logo-xip pairs the 08 bootloader with 07-lcd-logo run in place
-#   from QSPI.
+#   from QSPI. 10-touch-paint pairs the 08 bootloader with the paint
+#   application run in place from QSPI.
 #     make 01-blink            build one application
 #     make 01-blink-flash      build and flash it with the ST-LINK
 #     make BOARD=<name> ...    build for another board folder
@@ -47,6 +48,7 @@
 # | 1.12    | 28/10/2026 | Z. BEN-AKKA | Add 07-lcd-logo-xip: the logo run in place from QSPI.       |
 # | 1.13    | 29/10/2026 | Z. BEN-AKKA | Link the RCC module into the hil-bench image.               |
 # | 1.14    | 29/10/2026 | Z. BEN-AKKA | Link the LCD commands and the fb and LTDC modules into hil-bench. |
+# | 1.15    | 19/11/2026 | Z. BEN-AKKA | Add 10-touch-paint: the paint app run in place from QSPI.   |
 # ****************************
 # */
 
@@ -137,7 +139,15 @@ BOOT_MODULES := boot delay gpio led qspi uart
 07-lcd-logo-xip-app_MODULES  := $(07-lcd-logo_MODULES)
 07-lcd-logo-xip-app_MEMORY   := qspi
 
-MULTI  := 08-custombootloader 09-securebootloader 07-lcd-logo-xip
+# 10: the paint application, run in place from QSPI behind the 08 bootloader
+10-touch-paint_IMAGES       := 10-touch-paint-app 10-touch-paint-boot
+10-touch-paint-boot_SRCS    := $(APPS_DIR)/08-custombootloader/main.c
+10-touch-paint-boot_MODULES := $(BOOT_MODULES)
+10-touch-paint-app_SRCS     := $(APPS_DIR)/10-touch-paint/main.c
+10-touch-paint-app_MODULES  := delay fb gpio i2c ltdc rcc touch uart
+10-touch-paint-app_MEMORY   := qspi
+
+MULTI  := 08-custombootloader 09-securebootloader 07-lcd-logo-xip 10-touch-paint
 APPS   := $(SINGLE) $(MULTI) hil-bench uart-diag
 IMAGES := $(foreach a,$(APPS),$($(a)_IMAGES))
 
@@ -321,7 +331,7 @@ help:
 	@echo "  <app>-dfu            build and flash the internal-flash image over USB DFU"
 	@echo "  <app>-clean          remove its build outputs"
 	@echo ""
-	@echo "Per image (an application, or 08/09/07-lcd-logo-xip's <app>-boot and <app>-app):"
+	@echo "Per image (an application, or 08/09/07-lcd-logo-xip/10-touch-paint's <app>-boot and <app>-app):"
 	@echo "  <image>-size         flash and RAM usage"
 	@echo "  <image>-disasm       disassembly"
 	@echo "  <image>-sections     section addresses"
