@@ -5,8 +5,8 @@
 \brief      Minimal HIL protocol constants for the bench firmware.
 
 \author     Z. BEN-AKKA
-\version    1.4
-\date       29/10/2026
+\version    1.5
+\date       19/11/2026
 
 \details
   Defines the fixed UART, record, key and readiness-banner values shared by
@@ -21,6 +21,7 @@
 | 1.2     | 27/10/2026 | Z. BEN-AKKA | Protocol 1.1: LED_SET and LED_GET names and keys; fw 1.1.0. |
 | 1.3     | 28/10/2026 | Z. BEN-AKKA | Protocol 1.2: QSPI command names, keys and limits; fw 1.2.0. |
 | 1.4     | 29/10/2026 | Z. BEN-AKKA | Protocol 1.3: GPIO_CONFIG and LCD command names, keys and limits; fw 1.3.0. |
+| 1.5     | 19/11/2026 | Z. BEN-AKKA | Protocol 1.4: touch keys and start time; fw 1.4.0. |
 ****************************
 */
 
@@ -34,8 +35,8 @@
 
 /* ---- Protocol version (section 3) -------------------------------------- */
 #define HIL_PROTO_VERSION_MAJOR 1u
-#define HIL_PROTO_VERSION_MINOR 3u
-#define HIL_PROTO_VERSION_STR   "1.3"
+#define HIL_PROTO_VERSION_MINOR 4u
+#define HIL_PROTO_VERSION_STR   "1.4"
 
 /* ---- Line framing (section 2.2) ---------------------------------------- */
 /** Maximum line length in bytes, excluding the terminator. */
@@ -140,6 +141,13 @@
 /** Largest RGB565 color. */
 #define HIL_LCD_COLOR_MAX 0xFFFFu
 
+/* ---- Touch keys and limits (sections 6.20 to 6.22) --------------------- */
+#define HIL_KEY_CHIP_ID "chip_id"
+#define HIL_KEY_POINTS  "points"
+/** No touch access before this time after start, in milliseconds: the
+ *  FT5336 reset is NRST and the controller needs 200 ms (section 6.20). */
+#define HIL_TOUCH_START_MS 300u
+
 #define HIL_STATUS_OK   "OK"
 #define HIL_STATUS_ERR  "ERR"
 
@@ -193,7 +201,7 @@
 #define HIL_FW_NAME         "hil-bench"
 
 /* Readiness banner values (protocol section 4.1). */
-#define HIL_FW_VERSION      "1.3.0"
+#define HIL_FW_VERSION      "1.4.0"
 #define HIL_RESET_UNKNOWN   "unknown"
 
 #endif /* HIL_PROTOCOL_H */
