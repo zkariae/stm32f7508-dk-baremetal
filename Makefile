@@ -5,7 +5,7 @@
 # \brief      Build, flash and document project images for a board.
 #
 # \author     Z. BEN-AKKA
-# \version    1.15
+# \version    1.16
 # \date       19/11/2026
 #
 # \details
@@ -19,7 +19,8 @@
 #   only call. Applications and test images are declared as images; the rules
 #   for every image come from the IMAGE template. Both test images link the
 #   shared GPIO, UART and LED modules; hil-bench adds its protocol modules
-#   and headers, and the delay, framebuffer, LTDC, QSPI and RCC modules.
+#   and headers, and the delay, framebuffer, I2C, LTDC, QSPI, RCC and touch
+#   modules.
 #   hil-bench also gets hil_build.h, the git revision it was built from, for
 #   its readiness banner.
 #   07-lcd-logo-xip pairs the 08 bootloader with 07-lcd-logo run in place
@@ -49,6 +50,7 @@
 # | 1.13    | 29/10/2026 | Z. BEN-AKKA | Link the RCC module into the hil-bench image.               |
 # | 1.14    | 29/10/2026 | Z. BEN-AKKA | Link the LCD commands and the fb and LTDC modules into hil-bench. |
 # | 1.15    | 19/11/2026 | Z. BEN-AKKA | Add 10-touch-paint: the paint app run in place from QSPI.   |
+# | 1.16    | 19/11/2026 | Z. BEN-AKKA | Link the touch commands and the I2C and touch modules into hil-bench. |
 # ****************************
 # */
 
@@ -98,8 +100,8 @@ $(foreach a,$(SINGLE),$(eval $(a)_SRCS := $(APPS_DIR)/$(a)/main.c))
 # Hardware-in-the-loop bench firmware: the protocol of tests/protocol.md
 HIL_BENCH := tests/firmware/hil_bench
 hil-bench_IMAGES  := hil-bench
-hil-bench_SRCS    := $(addprefix $(HIL_BENCH)/,main.c reset_cause.c line.c protocol.c dispatch.c commands.c lcd_commands.c)
-hil-bench_MODULES := delay fb gpio led ltdc qspi rcc uart
+hil-bench_SRCS    := $(addprefix $(HIL_BENCH)/,main.c reset_cause.c line.c protocol.c dispatch.c commands.c lcd_commands.c touch_commands.c)
+hil-bench_MODULES := delay fb gpio i2c led ltdc qspi rcc touch uart
 hil-bench_CFLAGS  := -I$(HIL_BENCH)/inc -I$(BUILD)/hil-bench
 
 # UART driver diagnostic: raw echo and RX error markers (uart_rx_check.py T1-T8)
