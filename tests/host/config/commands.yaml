@@ -4,7 +4,7 @@
 # \brief      HIL command catalogue: arguments, defaults and effects of each command.
 #
 # \author     Z. BEN-AKKA
-# \version    1.1
+# \version    1.2
 # \date       20/11/2026
 #
 # \details
@@ -40,6 +40,7 @@
 # |:-------:|:----------:|:------------|:-----------------|
 # | 1.0     | 09/11/2026 | Z. BEN-AKKA | Initial version. |
 # | 1.1     | 20/11/2026 | Z. BEN-AKKA | Add TOUCH_ID and TOUCH_READ (protocol 1.4). |
+# | 1.2     | 20/11/2026 | Z. BEN-AKKA | Add LCD_CIRCLE (protocol 1.4). |
 # ****************************
 
 schema_version: 1
@@ -162,6 +163,17 @@ commands:
     args:
       x: {type: int, min: 0, max: 479, default: 0}
       y: {type: int, min: 0, max: 271, default: 0}
+
+  LCD_CIRCLE:
+    group: LCD
+    summary: Fill a disc of the framebuffer with one colour
+    spec: "6.23"
+    requires: LCD_INIT
+    args:
+      x: {type: int, min: 0, max: 479, default: 240}
+      y: {type: int, min: 0, max: 271, default: 136}
+      radius: {type: int, min: 1, max: 100, default: 20}
+      color: {type: color, default: 0x0000}
 
   # No requires: the touch commands do not depend on LCD_INIT (section 6.20)
   TOUCH_ID:
