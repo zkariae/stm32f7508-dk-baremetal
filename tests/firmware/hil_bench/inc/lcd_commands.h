@@ -5,17 +5,18 @@
 \brief      GPIO_CONFIG and LCD commands of the HIL protocol firmware.
 
 \author     Z. BEN-AKKA
-\version    1.0
-\date       29/10/2026
+\version    1.1
+\date       20/11/2026
 
 \details
-  Implements protocol.md sections 6.11 to 6.19. The handlers have the
-  CommandRun signature of commands.h and are listed in its table.
+  Implements protocol.md sections 6.11 to 6.19 and 6.23. The handlers have
+  the CommandRun signature of commands.h and are listed in its table.
 
 \section lcd_commands_h_version_history Version history
 | Version | Date       | Author      | Description      |
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 29/10/2026 | Z. BEN-AKKA | Initial version. |
+| 1.1     | 20/11/2026 | Z. BEN-AKKA | Declare LcdCircleCmd. |
 ****************************
 */
 
@@ -49,5 +50,8 @@ const char *LcdFillCmd(const CommandArg *args, uint32_t count, Record *result);
 
 /// LCD_PIXEL: read one framebuffer pixel (section 6.19).
 const char *LcdPixelCmd(const CommandArg *args, uint32_t count, Record *result);
+
+/// LCD_CIRCLE: fill a disc of the framebuffer with one colour (section 6.23).
+const char *LcdCircleCmd(const CommandArg *args, uint32_t count, Record *result);
 
 #endif /* LCD_COMMANDS_H */
