@@ -19,22 +19,24 @@ not flash between two targets. Once the last disc is touched, it is painted
 white too. The positions come from a seed written in the log;
 HIL_TOUCH_SEED=<n> replays a series. The drawing test works like the
 10-touch-paint application, in black only (the protocol has no rectangle for
-a colour bar): a disc of radius 4 at each touched point, and discs every
-4 pixels between two points of a stroke (2 in the application, but here each
-disc is a serial exchange). The drawing ends when the screen is
-released for 3 s; drawn points are read back with LCD_PIXEL.
+a colour bar): a disc of radius 4 at each touched point, and one LCD_LINE
+between two points of a stroke, which the firmware fills with discs every
+2 pixels as the application does (section 6.24): one serial exchange per
+point, whatever the length. The drawing ends when the screen is released for
+3 s; drawn points are read back with LCD_PIXEL.
 
 Not tested: DEVICE_TIMEOUT and DEVICE_ERROR, which need a missing controller
 or a faulty bus, and the points after the first, which TOUCH_READ does not
 report.
 
-Version: 1.2
+Version: 1.3
 Date: 20/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  20/11/2026  Initial version.
   1.1  20/11/2026  Add the accuracy tests: touch five discs drawn at random positions.
   1.2  20/11/2026  Add the drawing test, as in the 10-touch-paint application.
+  1.3  20/11/2026  Drawing test: one LCD_LINE per point instead of one LCD_CIRCLE per disc.
 """
 
 import logging
@@ -68,10 +70,7 @@ TARGET_CENTRES = [(_rng.randint(_low, LCD_WIDTH - 1 - _low), _rng.randint(_low, 
                   for _ in range(TARGETS)]
 
 BRUSH_RADIUS = 4      # Pixels, BRUSH_R of 10-touch-paint
-# Pixels between two discs of a stroke: 10-touch-paint uses 2; each disc costs a serial exchange here,
-# and discs of radius 4 every 4 pixels still overlap
-STROKE_STEP = BRUSH_RADIUS
-DRAW_END = 3.0       # Seconds released that end the drawing
+DRAW_END = 3.0        # Seconds released that end the drawing
 DRAW_MAX = 60.0       # Longest drawing, in seconds
 DRAW_MIN_POINTS = 10  # Touched points needed for a drawing
 DRAW_CHECKED = 20     # Drawn points read back with LCD_PIXEL, at most
@@ -223,11 +222,9 @@ def brush(board, point) -> None:
 
 
 def stroke(board, start, end) -> None:
-    """Discs every STROKE_STEP pixels from start to end: a fast stroke has no gaps (as in 10-touch-paint)."""
+    """One LCD_LINE from start to end: the firmware fills it with discs every 2 pixels (section 6.24)."""
     (x0, y0), (x1, y1) = start, end
-    steps = max(1, int(math.hypot(x1 - x0, y1 - y0) // STROKE_STEP))
-    for i in range(1, steps + 1):
-        brush(board, (round(x0 + (x1 - x0) * i / steps), round(y0 + (y1 - y0) * i / steps)))
+    assert board.request("LCD_LINE", x0=x0, y0=y0, x1=x1, y1=y1, radius=BRUSH_RADIUS, color=BLACK).ok
 
 
 def draw(board) -> tuple:
@@ -260,7 +257,7 @@ def draw(board) -> tuple:
 @pytest.mark.skipif(not OPERATOR, reason="needs an operator: set HIL_OPERATOR=1")
 def test_touch_draw(touch, capsys):
     """Free drawing as in 10-touch-paint: the black strokes follow the finger and are in the framebuffer."""
-    for command in ("LCD_INIT", "LCD_FILL", "LCD_CIRCLE", "LCD_PIXEL"):
+    for command in ("LCD_INIT", "LCD_FILL", "LCD_CIRCLE", "LCD_LINE", "LCD_PIXEL"):
         touch.require(command)
     assert touch.request("LCD_INIT").ok
     assert touch.request("LCD_FILL", color=WHITE).ok
