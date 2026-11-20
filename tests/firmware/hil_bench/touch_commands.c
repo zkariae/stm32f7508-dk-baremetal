@@ -5,8 +5,8 @@
 \brief      TOUCH_ID and TOUCH_READ commands of the HIL protocol firmware.
 
 \author     Z. BEN-AKKA
-\version    1.0
-\date       19/11/2026
+\version    1.1
+\date       20/11/2026
 
 \details
   Implements protocol.md sections 6.20 to 6.22.
@@ -16,12 +16,14 @@
     not depend on LCD_INIT and never return BUSY.
   - Driver results map to the protocol codes: TIMEOUT (no acknowledge, or a
     wait past its limit) gives DEVICE_TIMEOUT; FAILURE (bus error, lost
-    arbitration, more than 5 points) gives DEVICE_ERROR.
+    arbitration) gives DEVICE_ERROR. A count above 5 points is no touch
+    and gives points=0 (section 6.20).
 
 \section touch_commands_c_version_history Version history
 | Version | Date       | Author      | Description      |
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 19/11/2026 | Z. BEN-AKKA | Initial version. |
+| 1.1     | 20/11/2026 | Z. BEN-AKKA | Drop the touch count from the DEVICE_ERROR causes. |
 ****************************
 */
 
