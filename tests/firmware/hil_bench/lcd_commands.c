@@ -5,11 +5,11 @@
 \brief      GPIO_CONFIG and LCD commands of the HIL protocol firmware.
 
 \author     Z. BEN-AKKA
-\version    1.0
-\date       29/10/2026
+\version    1.1
+\date       20/11/2026
 
 \details
-  Implements protocol.md sections 6.11 to 6.19.
+  Implements protocol.md sections 6.11 to 6.19 and 6.23.
   - GPIO_CONFIG reads MODER, AFR and IDR of one pin, after enabling the
     clock of its port; it works without LCD_INIT.
   - LCD_INIT runs the steps of section 6.13 in order. Until it succeeds the
@@ -18,6 +18,8 @@
   - LCD_SCAN polls LTDC_CPSR for the whole window, measured with SysTickMs().
   - LCD_FILL and LCD_PIXEL write and read the framebuffer. The data cache is
     off (section 6.12), so the LTDC and the CPU see the same pixels.
+  - LCD_CIRCLE checks every argument, then fills the disc with FbCircle(),
+    which clips it to the framebuffer.
   The framebuffer is the only object of the .framebuffer section, so it
   starts at 0x20010000, the first SRAM address (section 6.12).
 
@@ -25,6 +27,7 @@
 | Version | Date       | Author      | Description      |
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 29/10/2026 | Z. BEN-AKKA | Initial version. |
+| 1.1     | 20/11/2026 | Z. BEN-AKKA | Add LCD_CIRCLE. |
 ****************************
 */
 
@@ -285,5 +288,30 @@ const char *LcdPixelCmd(const CommandArg *args, uint32_t count, Record *result)
     return HIL_ERR_INVALID_ARGUMENT;
   }
   AddColor(result, fb_pixels[y * LCD_WIDTH + x]);
+  return NULL;
+}
+
+const char *LcdCircleCmd(const CommandArg *args, uint32_t count, Record *result)
+{
+  const char *x_text = CommandFindArg(args, count, HIL_KEY_X);
+  const char *y_text = CommandFindArg(args, count, HIL_KEY_Y);
+  const char *radius_text = CommandFindArg(args, count, HIL_KEY_RADIUS);
+  const char *color_text = CommandFindArg(args, count, HIL_KEY_COLOR);
+  uint32_t x;
+  uint32_t y;
+  uint32_t radius;
+  uint32_t color;
+
+  (void)result;
+  if (!lcd_ready) {
+    return HIL_ERR_BUSY;
+  }
+  if (count != 4u || x_text == NULL || y_text == NULL || radius_text == NULL || color_text == NULL ||
+      !RecordParseDec(x_text, LCD_WIDTH - 1u, &x) || !RecordParseDec(y_text, LCD_HEIGHT - 1u, &y) ||
+      !RecordParseDec(radius_text, HIL_LCD_RADIUS_MAX, &radius) || radius < HIL_LCD_RADIUS_MIN ||
+      RecordStrLen(color_text) > COLOR_TEXT_MAX || !RecordParseHex32(color_text, &color)) {
+    return HIL_ERR_INVALID_ARGUMENT; // Before any pixel is written (section 6.23)
+  }
+  FbCircle(&screen, (int32_t)x, (int32_t)y, (int32_t)radius, (uint16_t)color);
   return NULL;
 }
