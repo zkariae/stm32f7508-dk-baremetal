@@ -8,7 +8,7 @@ failing. points=0 needs that nobody touches the screen during the run (section
 6.20, note); it also covers a TD_STATUS count above 5 read as no touch. A
 rejected request must leave the state unchanged (section 7.1).
 
-The corner and accuracy tests need an operator and run only with
+The corner, accuracy and drawing tests need an operator and run only with
 HIL_OPERATOR=1. The corner tests ask for a touch near the top-left, then the
 top-right corner, and check the position, which also checks the axis swap.
 The accuracy tests draw five black discs one after the other, at random
@@ -16,19 +16,25 @@ positions on a white screen (LCD_FILL, LCD_CIRCLE, section 6.23), and check
 that the touched point is inside each disc. The screen is made white once;
 the disc then moves: the previous one is painted white, so the screen does
 not flash between two targets. Once the last disc is touched, it is painted
-white too. The positions come from a seed
-written in the log; HIL_TOUCH_SEED=<n> replays a series.
+white too. The positions come from a seed written in the log;
+HIL_TOUCH_SEED=<n> replays a series. The drawing test works like the
+10-touch-paint application, in black only (the protocol has no rectangle for
+a colour bar): a disc of radius 4 at each touched point, and discs every
+4 pixels between two points of a stroke (2 in the application, but here each
+disc is a serial exchange). The drawing ends when the screen is
+released for 3 s; drawn points are read back with LCD_PIXEL.
 
 Not tested: DEVICE_TIMEOUT and DEVICE_ERROR, which need a missing controller
 or a faulty bus, and the points after the first, which TOUCH_READ does not
 report.
 
-Version: 1.1
+Version: 1.2
 Date: 20/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  20/11/2026  Initial version.
   1.1  20/11/2026  Add the accuracy tests: touch five discs drawn at random positions.
+  1.2  20/11/2026  Add the drawing test, as in the 10-touch-paint application.
 """
 
 import logging
@@ -60,6 +66,15 @@ _low = TARGET_RADIUS + TARGET_MARGIN
 _rng = random.Random(SEED)
 TARGET_CENTRES = [(_rng.randint(_low, LCD_WIDTH - 1 - _low), _rng.randint(_low, LCD_HEIGHT - 1 - _low))
                   for _ in range(TARGETS)]
+
+BRUSH_RADIUS = 4      # Pixels, BRUSH_R of 10-touch-paint
+# Pixels between two discs of a stroke: 10-touch-paint uses 2; each disc costs a serial exchange here,
+# and discs of radius 4 every 4 pixels still overlap
+STROKE_STEP = BRUSH_RADIUS
+DRAW_END = 3.0       # Seconds released that end the drawing
+DRAW_MAX = 60.0       # Longest drawing, in seconds
+DRAW_MIN_POINTS = 10  # Touched points needed for a drawing
+DRAW_CHECKED = 20     # Drawn points read back with LCD_PIXEL, at most
 
 log = logging.getLogger("hil.touch")  # Shown live by the TUI
 _target = {"centre": None}  # Disc on the screen, kept from one accuracy test to the next
@@ -199,3 +214,68 @@ def test_touch_accuracy(touch, capsys, number, centre):
     tell(capsys, f"Target {number}: centre ({cx}, {cy}), touched ({x}, {y}), {distance:.1f} px: {verdict}")
     assert distance <= TARGET_RADIUS, \
         f"touched ({x}, {y}) is {distance:.1f} px from ({cx}, {cy}), radius {TARGET_RADIUS}"
+
+
+def brush(board, point) -> None:
+    """One black disc of the brush at point."""
+    x, y = point
+    assert board.request("LCD_CIRCLE", x=x, y=y, radius=BRUSH_RADIUS, color=BLACK).ok
+
+
+def stroke(board, start, end) -> None:
+    """Discs every STROKE_STEP pixels from start to end: a fast stroke has no gaps (as in 10-touch-paint)."""
+    (x0, y0), (x1, y1) = start, end
+    steps = max(1, int(math.hypot(x1 - x0, y1 - y0) // STROKE_STEP))
+    for i in range(1, steps + 1):
+        brush(board, (round(x0 + (x1 - x0) * i / steps), round(y0 + (y1 - y0) * i / steps)))
+
+
+def draw(board) -> tuple:
+    """Follow the finger until the screen is released for DRAW_END; (points, strokes)."""
+    points, strokes = [], 0
+    previous, released_since = None, None
+    start = time.monotonic()
+    while time.monotonic() - start < DRAW_MAX:
+        response = board.request("TOUCH_READ")
+        assert response.ok
+        now = time.monotonic()
+        if response.fields["points"] != "0":
+            point = (int(response.fields["x"]), int(response.fields["y"]))
+            points.append(point)
+            if previous is None:
+                strokes += 1
+                brush(board, point)  # Touch down
+            elif point != previous:
+                stroke(board, previous, point)
+            previous, released_since = point, None
+        else:
+            previous = None  # The next touch starts a new stroke
+            released_since = released_since or now
+            if now - released_since >= DRAW_END:
+                break
+        # No pause: one TOUCH_READ exchange already lasts about as long as the 10 ms poll of 10-touch-paint
+    return points, strokes
+
+
+@pytest.mark.skipif(not OPERATOR, reason="needs an operator: set HIL_OPERATOR=1")
+def test_touch_draw(touch, capsys):
+    """Free drawing as in 10-touch-paint: the black strokes follow the finger and are in the framebuffer."""
+    for command in ("LCD_INIT", "LCD_FILL", "LCD_CIRCLE", "LCD_PIXEL"):
+        touch.require(command)
+    assert touch.request("LCD_INIT").ok
+    assert touch.request("LCD_FILL", color=WHITE).ok
+    _target["centre"] = None  # The accuracy disc, if any, is gone
+    wait_for_points(touch, touched=False)
+    tell(capsys, f"Draw on the screen with one finger; lift it for {DRAW_END:.0f} s to finish")
+    wait_for_points(touch, touched=True)  # First touch within TOUCH_WAIT
+    points, strokes = draw(touch)
+    try:
+        tell(capsys, f"Drawing done: {len(points)} points, {strokes} strokes")
+        assert len(points) >= DRAW_MIN_POINTS, f"{len(points)} points, at least {DRAW_MIN_POINTS} needed"
+        assert all(x < LCD_WIDTH and y < LCD_HEIGHT for x, y in points)
+        for x, y in points[::max(1, len(points) // DRAW_CHECKED)][:DRAW_CHECKED]:
+            response = touch.request("LCD_PIXEL", x=x, y=y)
+            assert response.ok
+            assert response.fields["color"] == BLACK, f"({x}, {y}) touched but not drawn"
+    finally:
+        touch.request("LCD_FILL", color=WHITE)  # Leave a white screen; never hides the failure above
