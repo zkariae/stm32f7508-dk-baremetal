@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: MIT
+# ****************************
+# \file       tests/host/tui/scenarios/touch_check.yaml
+# \brief      Scenario: read the touch controller identity, then no touch, one finger and no touch again.
+#
+# \author     Z. BEN-AKKA
+# \version    1.0
+# \date       20/11/2026
+#
+# \details
+#   Played by the TUI in the open session (README.md section 4.5, format in
+#   core/scenario.py). TOUCH_ID must give the FT5336 identifier, then
+#   TOUCH_READ must follow the operator: 0 points, 1 point, 0 points
+#   (tests/protocol.md sections 6.20 to 6.22). The position of the touched
+#   point is shown, not checked: the corner and accuracy tests of
+#   tests/host/hil/cases/test_touch.py check it. No LCD_INIT: the touch
+#   commands do not depend on the LCD (section 6.20).
+#
+# \section tui_touch_check_yaml_version_history Version history
+# | Version | Date       | Author      | Description      |
+# |:-------:|:----------:|:------------|:-----------------|
+# | 1.0     | 20/11/2026 | Z. BEN-AKKA | Initial version. |
+# ****************************
+
+name: Touch check
+description: Read the touch controller identity, then no touch, one finger, and no touch again.
+steps:
+  - {command: TOUCH_ID, expect: {chip_id: "0x51"}}
+  - {prompt: "Hands off the screen. Ready?"}
+  - {command: TOUCH_READ, expect: {points: "0"}}
+  - {prompt: "Put one finger on the screen and keep it there. Ready?"}
+  - {command: TOUCH_READ, expect: {points: "1"}}
+  - {prompt: "Lift your finger. Ready?"}
+  - {command: TOUCH_READ, expect: {points: "0"}}
