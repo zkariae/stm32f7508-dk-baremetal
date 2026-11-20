@@ -5,7 +5,7 @@
 \brief      HIL firmware-to-host protocol specification.
 
 \author     Z. BEN-AKKA
-\version    1.11
+\version    1.12
 \date       20/11/2026
 
 \details
@@ -29,6 +29,7 @@
 | 1.9     | 29/10/2026 | Z. BEN-AKKA | Specify GPIO_CONFIG and the LCD commands; protocol 1.3. |
 | 1.10    | 19/11/2026 | Z. BEN-AKKA | Specify TOUCH_ID and TOUCH_READ; protocol 1.4. |
 | 1.11    | 20/11/2026 | Z. BEN-AKKA | Touch: a count above 5 means no touch, not DEVICE_ERROR (section 6.20). |
+| 1.12    | 20/11/2026 | Z. BEN-AKKA | Specify LCD_CIRCLE (section 6.23); protocol 1.4. |
 ****************************
 -->
 
@@ -508,20 +509,20 @@ RESULT id=2 status=OK total=8 start=0 names=HELLO,CAPS,LED_SET,LED_GET,QSPI_ID,Q
 END id=2
 ```
 
-Example (informative), with three pages, for the eighteen commands of
+Example (informative), with three pages, for the nineteen commands of
 protocol 1.4. The second page stops before `LCD_PIXEL`: the room for
 ` next=15` must remain. The pages are the same for every request id, up to
 `id=65535` (126 bytes for the longest line):
 
 ```text
 CMD id=2 command=CAPS
-RESULT id=2 status=OK total=18 start=0 names=HELLO,CAPS,LED_SET,LED_GET,QSPI_ID,QSPI_READ,QSPI_ERASE,QSPI_WRITE next=8
+RESULT id=2 status=OK total=19 start=0 names=HELLO,CAPS,LED_SET,LED_GET,QSPI_ID,QSPI_READ,QSPI_ERASE,QSPI_WRITE next=8
 END id=2
 CMD id=3 command=CAPS start=8
-RESULT id=3 status=OK total=18 start=8 names=GPIO_CONFIG,LCD_INIT,LCD_CLOCK,LCD_TIMING,LCD_LAYER,LCD_SCAN,LCD_FILL next=15
+RESULT id=3 status=OK total=19 start=8 names=GPIO_CONFIG,LCD_INIT,LCD_CLOCK,LCD_TIMING,LCD_LAYER,LCD_SCAN,LCD_FILL next=15
 END id=3
 CMD id=4 command=CAPS start=15
-RESULT id=4 status=OK total=18 start=15 names=LCD_PIXEL,TOUCH_ID,TOUCH_READ
+RESULT id=4 status=OK total=19 start=15 names=LCD_PIXEL,LCD_CIRCLE,TOUCH_ID,TOUCH_READ
 END id=4
 ```
 
@@ -766,10 +767,10 @@ END id=9
 
 ### 6.12 LCD commands
 
-`LCD_INIT`, `LCD_CLOCK`, `LCD_TIMING`, `LCD_LAYER`, `LCD_SCAN`, `LCD_FILL`
-and `LCD_PIXEL` drive and check the 480 × 272 RK043FN48H panel of the board
-through the LTDC [N4] [I7] [I8]. The following rules apply to the seven
-commands.
+`LCD_INIT`, `LCD_CLOCK`, `LCD_TIMING`, `LCD_LAYER`, `LCD_SCAN`, `LCD_FILL`,
+`LCD_PIXEL` and `LCD_CIRCLE` (section 6.23) drive and check the 480 × 272
+RK043FN48H panel of the board through the LTDC [N4] [I7] [I8]. The following
+rules apply to the eight commands.
 
 | Item | Rule |
 |:--|:--|
@@ -1082,7 +1083,30 @@ RESULT id=19 status=OK points=1 x=15 y=7
 END id=19
 ```
 
-### 6.23 Future commands (informative)
+### 6.23 `LCD_CIRCLE`
+
+`LCD_CIRCLE` fills a disc of the framebuffer with one colour, for example a
+target for the operator to touch (section 6.22). It is an LCD command: the
+rules of section 6.12 apply.
+
+| Item | Specification |
+|:--|:--|
+| Arguments | `x` (required): column of the centre, unsigned decimal integer from 0 to 479. `y` (required): row of the centre, unsigned decimal integer from 0 to 271. `radius` (required): radius in pixels, unsigned decimal integer from 1 to 100. All three without leading zeros. `color` (required): RGB565 colour, as defined in section 6.12. |
+| Success result | No result field. |
+| Error codes | `BUSY` before `LCD_INIT` (section 6.12). `INVALID_ARGUMENT` if an argument is missing, malformed or out of range, or if any other argument is present; the framebuffer is then unchanged. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | Every pixel (px, py) of the framebuffer with (px − x)² + (py − y)² ≤ radius² takes the colour, which the panel shows from the next frame. The part of the disc outside the framebuffer is not drawn, and the other pixels are unchanged. |
+
+Example (informative), a black disc of radius 20 at the centre of the
+screen:
+
+```text
+CMD id=20 command=LCD_CIRCLE x=240 y=136 radius=20 color=0x0000
+RESULT id=20 status=OK
+END id=20
+```
+
+### 6.24 Future commands (informative)
 
 The following example shows how a future peripheral command would use the
 same envelope. `SDRAM_TEST` is not part of protocol version 1.4 and SHALL
