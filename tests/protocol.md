@@ -5,8 +5,8 @@
 \brief      HIL firmware-to-host protocol specification.
 
 \author     Z. BEN-AKKA
-\version    1.10
-\date       19/11/2026
+\version    1.11
+\date       20/11/2026
 
 \details
   Specifies the HIL host-firmware serial interface, including record syntax,
@@ -28,6 +28,7 @@
 | 1.8     | 28/10/2026 | Z. BEN-AKKA | QSPI: page rule and test area layout (section 6.6). |
 | 1.9     | 29/10/2026 | Z. BEN-AKKA | Specify GPIO_CONFIG and the LCD commands; protocol 1.3. |
 | 1.10    | 19/11/2026 | Z. BEN-AKKA | Specify TOUCH_ID and TOUCH_READ; protocol 1.4. |
+| 1.11    | 20/11/2026 | Z. BEN-AKKA | Touch: a count above 5 means no touch, not DEVICE_ERROR (section 6.20). |
 ****************************
 -->
 
@@ -1014,7 +1015,8 @@ the panel [N7] [N8], on I2C3 (SCL on PH7, SDA on PH8), at the 7-bit address
 | Prerequisite | None: the touch commands do not depend on `LCD_INIT` and never return `BUSY`. The first touch command of a session configures I2C3 [N4]. |
 | Start time | The reset of the FT5336 is the reset of the MCU (NRST), and the controller answers at least 200 ms after it [N7]. The firmware SHALL NOT address the controller before 300 ms after its own start. A touch command received earlier SHALL wait until then: its `RESULT` MAY come up to 300 ms after the start of the firmware, within the response timeout. |
 | Coordinates | Column `x` from 0 at the left, row `y` from 0 at the top of the 480 × 272 screen, in decimal without leading zeros, as reported by the controller, without scaling. The controller axes are swapped to screen axes (screen x is the controller Y register). |
-| Errors | `DEVICE_TIMEOUT` if the controller does not answer: no acknowledge of its address or of a byte, or a wait beyond the firmware's internal time limit. `DEVICE_ERROR` on an I2C bus error or a lost arbitration, or if the controller reports more than 5 points. |
+| Number of points | Bits 3:0 of the `TD_STATUS` register (`0x02`) [N8]. A value above 5 is not a touch: the firmware SHALL report `points=0`, as the controller driver of [N8] does. |
+| Errors | `DEVICE_TIMEOUT` if the controller does not answer: no acknowledge of its address or of a byte, or a wait beyond the firmware's internal time limit. `DEVICE_ERROR` on an I2C bus error or a lost arbitration. |
 
 > **Note (informative):** The touch commands cannot tell an intended touch
 > from an accidental one. A test that expects `points=0` requires that
@@ -1251,7 +1253,7 @@ a reference is dated, only the cited edition applies.
 | [N5] | Micron, *N25Q128A 128Mb 3V multiple I/O serial flash memory* datasheet. <https://www.micron.com/products/storage/nor-flash/serial-nor> | Instructions, JEDEC identifier, 256-byte page, 4 KB erase block, and maximum erase and program times (sections 6.6 to 6.10). |
 | [N6] | STMicroelectronics, *STM32F750x8 datasheet*, alternate function mapping table. <https://www.st.com/resource/en/datasheet/stm32f750n8.pdf> | Expected alternate function of each LCD pin, checked with `GPIO_CONFIG` (section 6.11). |
 | [N7] | FocalTech, *FT5336GQQ capacitive touch panel controller* datasheet, version 0.6. | Time from reset to the first access, at least 200 ms (Table 3-5), and SCL frequency range (Table 2-2) (section 6.20). |
-| [N8] | STMicroelectronics, *stm32-ft5336* BSP component, commit `8edacf0` (the one used by STM32CubeF7). <https://github.com/STMicroelectronics/stm32-ft5336> | Registers of the FT5336: chip identifier `0xA8` = `0x51`, `TD_STATUS` `0x02` and first point `0x03` to `0x06` (sections 6.21 and 6.22). The FocalTech datasheet has no register map. |
+| [N8] | STMicroelectronics, *stm32-ft5336* BSP component, commit `8edacf0` (the one used by STM32CubeF7). <https://github.com/STMicroelectronics/stm32-ft5336> | Registers of the FT5336: chip identifier `0xA8` = `0x51`, `TD_STATUS` `0x02` and first point `0x03` to `0x06` (sections 6.21 and 6.22); a `TD_STATUS` count above 5 read as no touch, in `ft5336_TS_DetectTouch` (section 6.20). The FocalTech datasheet has no register map. |
 
 ### 9.2 Informative references
 
