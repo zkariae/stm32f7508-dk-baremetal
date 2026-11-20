@@ -5,11 +5,11 @@
 \brief      GPIO_CONFIG and LCD commands of the HIL protocol firmware.
 
 \author     Z. BEN-AKKA
-\version    1.1
+\version    1.2
 \date       20/11/2026
 
 \details
-  Implements protocol.md sections 6.11 to 6.19 and 6.23.
+  Implements protocol.md sections 6.11 to 6.19, 6.23 and 6.24.
   - GPIO_CONFIG reads MODER, AFR and IDR of one pin, after enabling the
     clock of its port; it works without LCD_INIT.
   - LCD_INIT runs the steps of section 6.13 in order. Until it succeeds the
@@ -20,6 +20,9 @@
     off (section 6.12), so the LTDC and the CPU see the same pixels.
   - LCD_CIRCLE checks every argument, then fills the disc with FbCircle(),
     which clips it to the framebuffer.
+  - LCD_LINE checks every argument, then draws discs from one end to the
+    other at most 2 pixels apart, as stroke() of the 10-touch-paint
+    application; 32-bit divisions only, rounded toward zero.
   The framebuffer is the only object of the .framebuffer section, so it
   starts at 0x20010000, the first SRAM address (section 6.12).
 
@@ -28,6 +31,7 @@
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 29/10/2026 | Z. BEN-AKKA | Initial version. |
 | 1.1     | 20/11/2026 | Z. BEN-AKKA | Add LCD_CIRCLE. |
+| 1.2     | 20/11/2026 | Z. BEN-AKKA | Add LCD_LINE. |
 ****************************
 */
 
@@ -313,5 +317,55 @@ const char *LcdCircleCmd(const CommandArg *args, uint32_t count, Record *result)
     return HIL_ERR_INVALID_ARGUMENT; // Before any pixel is written (section 6.23)
   }
   FbCircle(&screen, (int32_t)x, (int32_t)y, (int32_t)radius, (uint16_t)color);
+  return NULL;
+}
+
+/*!
+\brief  Absolute value of a coordinate difference.
+*/
+static int32_t Abs32(int32_t v)
+{
+  return (v < 0) ? -v : v;
+}
+
+const char *LcdLineCmd(const CommandArg *args, uint32_t count, Record *result)
+{
+  const char *x0_text = CommandFindArg(args, count, HIL_KEY_X0);
+  const char *y0_text = CommandFindArg(args, count, HIL_KEY_Y0);
+  const char *x1_text = CommandFindArg(args, count, HIL_KEY_X1);
+  const char *y1_text = CommandFindArg(args, count, HIL_KEY_Y1);
+  const char *radius_text = CommandFindArg(args, count, HIL_KEY_RADIUS);
+  const char *color_text = CommandFindArg(args, count, HIL_KEY_COLOR);
+  uint32_t x0;
+  uint32_t y0;
+  uint32_t x1;
+  uint32_t y1;
+  uint32_t radius;
+  uint32_t color;
+
+  (void)result;
+  if (!lcd_ready) {
+    return HIL_ERR_BUSY;
+  }
+  if (count != 6u || x0_text == NULL || y0_text == NULL || x1_text == NULL || y1_text == NULL ||
+      radius_text == NULL || color_text == NULL || !RecordParseDec(x0_text, LCD_WIDTH - 1u, &x0) ||
+      !RecordParseDec(y0_text, LCD_HEIGHT - 1u, &y0) || !RecordParseDec(x1_text, LCD_WIDTH - 1u, &x1) ||
+      !RecordParseDec(y1_text, LCD_HEIGHT - 1u, &y1) ||
+      !RecordParseDec(radius_text, HIL_LCD_LINE_RADIUS_MAX, &radius) || radius < HIL_LCD_RADIUS_MIN ||
+      RecordStrLen(color_text) > COLOR_TEXT_MAX || !RecordParseHex32(color_text, &color)) {
+    return HIL_ERR_INVALID_ARGUMENT; // Before any pixel is written (section 6.24)
+  }
+  const int32_t sx = (int32_t)x0;
+  const int32_t sy = (int32_t)y0;
+  const int32_t dx = (int32_t)x1 - sx;
+  const int32_t dy = (int32_t)y1 - sy;
+  const int32_t len = (Abs32(dx) > Abs32(dy)) ? Abs32(dx) : Abs32(dy);
+  const int32_t steps = len / HIL_LCD_LINE_STEP;
+
+  FbCircle(&screen, sx, sy, (int32_t)radius, (uint16_t)color);
+  for (int32_t i = 1; i <= steps; ++i) {
+    FbCircle(&screen, sx + dx * i / steps, sy + dy * i / steps, (int32_t)radius, (uint16_t)color);
+  }
+  FbCircle(&screen, (int32_t)x1, (int32_t)y1, (int32_t)radius, (uint16_t)color);
   return NULL;
 }
