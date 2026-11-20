@@ -5,7 +5,7 @@
 \brief      HIL firmware-to-host protocol specification.
 
 \author     Z. BEN-AKKA
-\version    1.12
+\version    1.13
 \date       20/11/2026
 
 \details
@@ -30,6 +30,7 @@
 | 1.10    | 19/11/2026 | Z. BEN-AKKA | Specify TOUCH_ID and TOUCH_READ; protocol 1.4. |
 | 1.11    | 20/11/2026 | Z. BEN-AKKA | Touch: a count above 5 means no touch, not DEVICE_ERROR (section 6.20). |
 | 1.12    | 20/11/2026 | Z. BEN-AKKA | Specify LCD_CIRCLE (section 6.23); protocol 1.4. |
+| 1.13    | 20/11/2026 | Z. BEN-AKKA | Specify LCD_LINE (section 6.24); protocol 1.4. |
 ****************************
 -->
 
@@ -509,20 +510,20 @@ RESULT id=2 status=OK total=8 start=0 names=HELLO,CAPS,LED_SET,LED_GET,QSPI_ID,Q
 END id=2
 ```
 
-Example (informative), with three pages, for the nineteen commands of
+Example (informative), with three pages, for the twenty commands of
 protocol 1.4. The second page stops before `LCD_PIXEL`: the room for
 ` next=15` must remain. The pages are the same for every request id, up to
 `id=65535` (126 bytes for the longest line):
 
 ```text
 CMD id=2 command=CAPS
-RESULT id=2 status=OK total=19 start=0 names=HELLO,CAPS,LED_SET,LED_GET,QSPI_ID,QSPI_READ,QSPI_ERASE,QSPI_WRITE next=8
+RESULT id=2 status=OK total=20 start=0 names=HELLO,CAPS,LED_SET,LED_GET,QSPI_ID,QSPI_READ,QSPI_ERASE,QSPI_WRITE next=8
 END id=2
 CMD id=3 command=CAPS start=8
-RESULT id=3 status=OK total=19 start=8 names=GPIO_CONFIG,LCD_INIT,LCD_CLOCK,LCD_TIMING,LCD_LAYER,LCD_SCAN,LCD_FILL next=15
+RESULT id=3 status=OK total=20 start=8 names=GPIO_CONFIG,LCD_INIT,LCD_CLOCK,LCD_TIMING,LCD_LAYER,LCD_SCAN,LCD_FILL next=15
 END id=3
 CMD id=4 command=CAPS start=15
-RESULT id=4 status=OK total=19 start=15 names=LCD_PIXEL,LCD_CIRCLE,TOUCH_ID,TOUCH_READ
+RESULT id=4 status=OK total=20 start=15 names=LCD_PIXEL,LCD_CIRCLE,LCD_LINE,TOUCH_ID,TOUCH_READ
 END id=4
 ```
 
@@ -768,9 +769,9 @@ END id=9
 ### 6.12 LCD commands
 
 `LCD_INIT`, `LCD_CLOCK`, `LCD_TIMING`, `LCD_LAYER`, `LCD_SCAN`, `LCD_FILL`,
-`LCD_PIXEL` and `LCD_CIRCLE` (section 6.23) drive and check the 480 × 272
-RK043FN48H panel of the board through the LTDC [N4] [I7] [I8]. The following
-rules apply to the eight commands.
+`LCD_PIXEL`, `LCD_CIRCLE` (section 6.23) and `LCD_LINE` (section 6.24) drive
+and check the 480 × 272 RK043FN48H panel of the board through the LTDC [N4]
+[I7] [I8]. The following rules apply to the nine commands.
 
 | Item | Rule |
 |:--|:--|
@@ -1106,7 +1107,30 @@ RESULT id=20 status=OK
 END id=20
 ```
 
-### 6.24 Future commands (informative)
+### 6.24 `LCD_LINE`
+
+`LCD_LINE` draws a stroke of discs from one point to another, the way a
+finger draws on the screen: one exchange draws a whole segment, where
+`LCD_CIRCLE` draws one disc. It is an LCD command: the rules of section 6.12
+apply.
+
+| Item | Specification |
+|:--|:--|
+| Arguments | `x0`, `y0` (required): start point. `x1`, `y1` (required): end point. Columns are unsigned decimal integers from 0 to 479, rows from 0 to 271. `radius` (required): radius of the discs in pixels, unsigned decimal integer from 1 to 20. All without leading zeros. `color` (required): RGB565 colour, as defined in section 6.12. |
+| Success result | No result field. |
+| Error codes | `BUSY` before `LCD_INIT` (section 6.12). `INVALID_ARGUMENT` if an argument is missing, malformed or out of range, or if any other argument is present; the framebuffer is then unchanged. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | The discs of section 6.23, of the given radius and colour, are drawn at these centres: (x0, y0); then, with dx = x1 − x0, dy = y1 − y0 and n = max(\|dx\|, \|dy\|) / 2 rounded down, (x0 + dx × i / n, y0 + dy × i / n) for i from 1 to n, each division rounded toward zero; then (x1, y1). Consecutive centres are at most 2 pixels apart on each axis: from a radius of 2 the stroke has no gap, while with a radius of 1 a slanted stroke is dotted. The part outside the framebuffer is not drawn, and the other pixels are unchanged. |
+
+Example (informative), a black stroke of radius 4 across the screen:
+
+```text
+CMD id=21 command=LCD_LINE x0=40 y0=136 x1=440 y1=136 radius=4 color=0x0000
+RESULT id=21 status=OK
+END id=21
+```
+
+### 6.25 Future commands (informative)
 
 The following example shows how a future peripheral command would use the
 same envelope. `SDRAM_TEST` is not part of protocol version 1.4 and SHALL
