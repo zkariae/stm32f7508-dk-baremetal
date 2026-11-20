@@ -5,8 +5,8 @@
 \brief      Minimal HIL protocol constants for the bench firmware.
 
 \author     Z. BEN-AKKA
-\version    1.5
-\date       19/11/2026
+\version    1.6
+\date       20/11/2026
 
 \details
   Defines the fixed UART, record, key and readiness-banner values shared by
@@ -22,6 +22,7 @@
 | 1.3     | 28/10/2026 | Z. BEN-AKKA | Protocol 1.2: QSPI command names, keys and limits; fw 1.2.0. |
 | 1.4     | 29/10/2026 | Z. BEN-AKKA | Protocol 1.3: GPIO_CONFIG and LCD command names, keys and limits; fw 1.3.0. |
 | 1.5     | 19/11/2026 | Z. BEN-AKKA | Protocol 1.4: touch keys and start time; fw 1.4.0. |
+| 1.6     | 20/11/2026 | Z. BEN-AKKA | Protocol 1.4: TOUCH_ID and TOUCH_READ command names. |
 ****************************
 */
 
@@ -173,6 +174,8 @@
 #define HIL_CMD_LCD_SCAN     "LCD_SCAN"
 #define HIL_CMD_LCD_FILL     "LCD_FILL"
 #define HIL_CMD_LCD_PIXEL    "LCD_PIXEL"
+#define HIL_CMD_TOUCH_ID     "TOUCH_ID"
+#define HIL_CMD_TOUCH_READ   "TOUCH_READ"
 #define HIL_CAPS_TOTAL_MIN   2u
 #define HIL_CAPS_TOTAL_MAX   255u
 

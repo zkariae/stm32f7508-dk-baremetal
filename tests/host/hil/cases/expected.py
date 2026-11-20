@@ -6,16 +6,18 @@ smoke and CAPS tests derive their expected values from this list. The QSPI
 values are those of the board's flash and of protocol.md sections 6.6 to 6.10.
 The LCD values are those of the board's RK043FN48H panel and of protocol.md
 sections 6.11 to 6.19; the pin table comes from the alternate function
-mapping of the STM32F750x8 datasheet [N6], not from the firmware.
+mapping of the STM32F750x8 datasheet [N6], not from the firmware. The touch
+values are those of the FT5336 registers in the ST driver [N8].
 
-Version: 1.3
-Date: 03/11/2026
+Version: 1.4
+Date: 20/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  27/10/2026  Initial version.
   1.1  27/10/2026  Add LED_SET and LED_GET (protocol 1.1).
   1.2  28/10/2026  Add the QSPI commands and values (protocol 1.2).
   1.3  03/11/2026  Add GPIO_CONFIG, the LCD commands and values (protocol 1.3).
+  1.4  20/11/2026  Add TOUCH_ID, TOUCH_READ and the touch values (protocol 1.4).
 """
 
 COMMANDS = [
@@ -23,6 +25,7 @@ COMMANDS = [
     "QSPI_ID", "QSPI_READ", "QSPI_ERASE", "QSPI_WRITE",
     "GPIO_CONFIG", "LCD_INIT", "LCD_CLOCK", "LCD_TIMING",
     "LCD_LAYER", "LCD_SCAN", "LCD_FILL", "LCD_PIXEL",
+    "TOUCH_ID", "TOUCH_READ",
 ]
 
 QSPI_JEDEC_ID = 0x0018BA20      # N25Q128A, protocol.md section 6.7
@@ -60,3 +63,6 @@ LCD_PIXEL_HZ = 9000000          # Section 6.14
 LCD_FB_ADDR = 0x20010000        # First SRAM address, section 6.12
 LCD_WIDTH = 480
 LCD_HEIGHT = 272
+
+TOUCH_CHIP_ID = 0x51            # FT5336 register 0xA8, section 6.21 ([N8])
+TOUCH_MAX_POINTS = 5            # TD_STATUS limit, section 6.20 ([N8])
