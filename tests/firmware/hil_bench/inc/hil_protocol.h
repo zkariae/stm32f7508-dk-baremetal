@@ -5,7 +5,7 @@
 \brief      Minimal HIL protocol constants for the bench firmware.
 
 \author     Z. BEN-AKKA
-\version    1.7
+\version    1.8
 \date       20/11/2026
 
 \details
@@ -24,6 +24,7 @@
 | 1.5     | 19/11/2026 | Z. BEN-AKKA | Protocol 1.4: touch keys and start time; fw 1.4.0. |
 | 1.6     | 20/11/2026 | Z. BEN-AKKA | Protocol 1.4: TOUCH_ID and TOUCH_READ command names. |
 | 1.7     | 20/11/2026 | Z. BEN-AKKA | Protocol 1.4: LCD_CIRCLE name, radius key and limits. |
+| 1.8     | 20/11/2026 | Z. BEN-AKKA | Protocol 1.4: LCD_LINE name, end point keys and radius limit. |
 ****************************
 */
 
@@ -115,7 +116,7 @@
 #define HIL_GPIO_PORT_LAST  'K'
 #define HIL_GPIO_PIN_MAX    15u
 
-/* ---- LCD keys and limits (sections 6.12 to 6.19 and 6.23) -------------- */
+/* ---- LCD keys and limits (sections 6.12 to 6.19, 6.23 and 6.24) -------- */
 #define HIL_KEY_PLLSAI   "pllsai"
 #define HIL_KEY_PIXEL_HZ "pixel_hz"
 #define HIL_KEY_HSW      "hsw"
@@ -136,6 +137,10 @@
 #define HIL_KEY_UNDERRUN "underrun"
 #define HIL_KEY_COLOR    "color"
 #define HIL_KEY_RADIUS   "radius"
+#define HIL_KEY_X0       "x0"
+#define HIL_KEY_Y0       "y0"
+#define HIL_KEY_X1       "x1"
+#define HIL_KEY_Y1       "y1"
 #define HIL_PLLSAI_LOCKED "locked"
 #define HIL_PLLSAI_OFF    "off"
 /** Measurement window of LCD_SCAN, in milliseconds. */
@@ -146,6 +151,10 @@
 /** Radius of LCD_CIRCLE, in pixels. */
 #define HIL_LCD_RADIUS_MIN 1u
 #define HIL_LCD_RADIUS_MAX 100u
+/** Radius of LCD_LINE, in pixels: a stroke across the screen stays far within the timeout. */
+#define HIL_LCD_LINE_RADIUS_MAX 20u
+/** Largest distance between two disc centres of LCD_LINE, on each axis. */
+#define HIL_LCD_LINE_STEP 2
 
 /* ---- Touch keys and limits (sections 6.20 to 6.22) --------------------- */
 #define HIL_KEY_CHIP_ID "chip_id"
@@ -180,6 +189,7 @@
 #define HIL_CMD_LCD_FILL     "LCD_FILL"
 #define HIL_CMD_LCD_PIXEL    "LCD_PIXEL"
 #define HIL_CMD_LCD_CIRCLE   "LCD_CIRCLE"
+#define HIL_CMD_LCD_LINE     "LCD_LINE"
 #define HIL_CMD_TOUCH_ID     "TOUCH_ID"
 #define HIL_CMD_TOUCH_READ   "TOUCH_READ"
 #define HIL_CAPS_TOTAL_MIN   2u
