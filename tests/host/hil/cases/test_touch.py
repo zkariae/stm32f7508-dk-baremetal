@@ -18,8 +18,11 @@ the disc then moves: the previous one is painted white, so the screen does
 not flash between two targets. Once the last disc is touched, it is painted
 white too. The positions come from a seed written in the log;
 HIL_TOUCH_SEED=<n> replays a series. The drawing test works like the
-10-touch-paint application, in black only (the protocol has no rectangle for
-a colour bar): a disc of radius 4 at each touched point, and one LCD_LINE
+10-touch-paint application, in one colour (the protocol has no rectangle for
+a colour bar): HIL_DRAW_COLOR=<name or 0x...> chooses it, black by default;
+the names and their French aliases come from tests/host/config/colors.yaml,
+and white, invisible on the white screen, is refused. It draws a disc of
+radius 4 at each touched point, and one LCD_LINE
 between two points of a stroke, which the firmware fills with discs every
 2 pixels as the application does (section 6.24): one serial exchange per
 point, whatever the length. The drawing ends when the screen is released for
@@ -29,7 +32,7 @@ Not tested: DEVICE_TIMEOUT and DEVICE_ERROR, which need a missing controller
 or a faulty bus, and the points after the first, which TOUCH_READ does not
 report.
 
-Version: 1.3
+Version: 1.4
 Date: 20/11/2026
 Author: Z. BEN-AKKA
 History:
@@ -37,15 +40,19 @@ History:
   1.1  20/11/2026  Add the accuracy tests: touch five discs drawn at random positions.
   1.2  20/11/2026  Add the drawing test, as in the 10-touch-paint application.
   1.3  20/11/2026  Drawing test: one LCD_LINE per point instead of one LCD_CIRCLE per disc.
+  1.4  20/11/2026  Drawing test: colour chosen with HIL_DRAW_COLOR, names from colors.yaml.
 """
 
 import logging
 import math
 import os
 import random
+import re
 import time
+from pathlib import Path
 
 import pytest
+import yaml
 
 from cases.expected import LCD_HEIGHT, LCD_WIDTH, TOUCH_CHIP_ID, TOUCH_MAX_POINTS
 
@@ -74,6 +81,8 @@ DRAW_END = 3.0        # Seconds released that end the drawing
 DRAW_MAX = 60.0       # Longest drawing, in seconds
 DRAW_MIN_POINTS = 10  # Touched points needed for a drawing
 DRAW_CHECKED = 20     # Drawn points read back with LCD_PIXEL, at most
+COLORS_FILE = Path(__file__).resolve().parents[2] / "config" / "colors.yaml"
+HEX_COLOR = re.compile(r"0x[0-9A-Fa-f]{1,4}")  # RGB565 argument, section 6.12
 
 log = logging.getLogger("hil.touch")  # Shown live by the TUI
 _target = {"centre": None}  # Disc on the screen, kept from one accuracy test to the next
@@ -215,19 +224,48 @@ def test_touch_accuracy(touch, capsys, number, centre):
         f"touched ({x}, {y}) is {distance:.1f} px from ({cx}, {cy}), radius {TARGET_RADIUS}"
 
 
-def brush(board, point) -> None:
-    """One black disc of the brush at point."""
+def load_colors(path: Path = COLORS_FILE) -> dict:
+    """{name or alias, lower case: (name, value as 0x and 4 uppercase digits)} from colors.yaml."""
+    table = {}
+    for name, entry in yaml.safe_load(path.read_text(encoding="utf-8"))["colors"].items():
+        value = f"0x{int(entry['rgb565'], 16):04X}"
+        for key in [name, *entry["aliases"]]:
+            if key.lower() in table:
+                raise ValueError(f"{path.name}: {key} defined twice")
+            table[key.lower()] = (name, value)
+    return table
+
+
+def draw_color(text: str, colors: dict) -> tuple:
+    """(name, value) of a HIL_DRAW_COLOR text; ValueError if unknown, malformed or white."""
+    text = text.strip()
+    if HEX_COLOR.fullmatch(text):
+        value = f"0x{int(text, 16):04X}"
+        name = next((known for known, known_value in colors.values() if known_value == value), value)
+    elif text.lower() in colors:
+        name, value = colors[text.lower()]
+    else:
+        names = ", ".join(sorted({known for known, _ in colors.values()}))
+        raise ValueError(f"HIL_DRAW_COLOR={text!r}: not a colour of {COLORS_FILE.name} ({names}) nor 0x and 1 to 4 "
+                         f"hexadecimal digits")
+    if value == WHITE:
+        raise ValueError(f"HIL_DRAW_COLOR={text!r}: white is invisible on the white screen")
+    return name, value
+
+
+def brush(board, point, color: str) -> None:
+    """One disc of the brush at point."""
     x, y = point
-    assert board.request("LCD_CIRCLE", x=x, y=y, radius=BRUSH_RADIUS, color=BLACK).ok
+    assert board.request("LCD_CIRCLE", x=x, y=y, radius=BRUSH_RADIUS, color=color).ok
 
 
-def stroke(board, start, end) -> None:
+def stroke(board, start, end, color: str) -> None:
     """One LCD_LINE from start to end: the firmware fills it with discs every 2 pixels (section 6.24)."""
     (x0, y0), (x1, y1) = start, end
-    assert board.request("LCD_LINE", x0=x0, y0=y0, x1=x1, y1=y1, radius=BRUSH_RADIUS, color=BLACK).ok
+    assert board.request("LCD_LINE", x0=x0, y0=y0, x1=x1, y1=y1, radius=BRUSH_RADIUS, color=color).ok
 
 
-def draw(board) -> tuple:
+def draw(board, color: str) -> tuple:
     """Follow the finger until the screen is released for DRAW_END; (points, strokes)."""
     points, strokes = [], 0
     previous, released_since = None, None
@@ -241,9 +279,9 @@ def draw(board) -> tuple:
             points.append(point)
             if previous is None:
                 strokes += 1
-                brush(board, point)  # Touch down
+                brush(board, point, color)  # Touch down
             elif point != previous:
-                stroke(board, previous, point)
+                stroke(board, previous, point, color)
             previous, released_since = point, None
         else:
             previous = None  # The next touch starts a new stroke
@@ -256,16 +294,20 @@ def draw(board) -> tuple:
 
 @pytest.mark.skipif(not OPERATOR, reason="needs an operator: set HIL_OPERATOR=1")
 def test_touch_draw(touch, capsys):
-    """Free drawing as in 10-touch-paint: the black strokes follow the finger and are in the framebuffer."""
+    """Free drawing as in 10-touch-paint: the strokes follow the finger and are in the framebuffer."""
+    try:
+        name, color = draw_color(os.environ.get("HIL_DRAW_COLOR", "black"), load_colors())
+    except ValueError as error:
+        pytest.fail(str(error))  # Before anything is drawn
     for command in ("LCD_INIT", "LCD_FILL", "LCD_CIRCLE", "LCD_LINE", "LCD_PIXEL"):
         touch.require(command)
     assert touch.request("LCD_INIT").ok
     assert touch.request("LCD_FILL", color=WHITE).ok
     _target["centre"] = None  # The accuracy disc, if any, is gone
     wait_for_points(touch, touched=False)
-    tell(capsys, f"Draw on the screen with one finger; lift it for {DRAW_END:.0f} s to finish")
+    tell(capsys, f"Draw on the screen with one finger in {name} ({color}); lift it for {DRAW_END:.0f} s to finish")
     wait_for_points(touch, touched=True)  # First touch within TOUCH_WAIT
-    points, strokes = draw(touch)
+    points, strokes = draw(touch, color)
     try:
         tell(capsys, f"Drawing done: {len(points)} points, {strokes} strokes")
         assert len(points) >= DRAW_MIN_POINTS, f"{len(points)} points, at least {DRAW_MIN_POINTS} needed"
@@ -273,6 +315,6 @@ def test_touch_draw(touch, capsys):
         for x, y in points[::max(1, len(points) // DRAW_CHECKED)][:DRAW_CHECKED]:
             response = touch.request("LCD_PIXEL", x=x, y=y)
             assert response.ok
-            assert response.fields["color"] == BLACK, f"({x}, {y}) touched but not drawn"
+            assert response.fields["color"] == color, f"({x}, {y}) touched but not drawn in {name}"
     finally:
         touch.request("LCD_FILL", color=WHITE)  # Leave a white screen; never hides the failure above
