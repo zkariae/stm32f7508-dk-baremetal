@@ -5,8 +5,8 @@
 \brief      FT5336 capacitive touch controller, polled over I2C.
 
 \author     Z. BEN-AKKA
-\version    1.0
-\date       18/11/2026
+\version    1.1
+\date       20/11/2026
 
 \details
   The I2C bus and the 7-bit address are parameters (BOARD_I2C_TOUCH,
@@ -21,6 +21,7 @@
 | Version | Date       | Author      | Description      |
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 18/11/2026 | Z. BEN-AKKA | Initial version. |
+| 1.1     | 20/11/2026 | Z. BEN-AKKA | TouchRead: a count above TOUCH_MAX_POINTS gives 0 points, not FAILURE. |
 ****************************
 */
 
@@ -59,12 +60,14 @@ int TouchReadId(const I2c *i2c, uint8_t addr7, uint8_t *id);
 
 /*!
 \brief  Read the number of points and the first point, in one transfer.
+\details A number of points above TOUCH_MAX_POINTS is not a touch and gives 0
+         points, as in the ST ft5336 driver (ft5336_TS_DetectTouch).
 \param  i2c     I2C configured by TouchInit().
 \param  addr7   7-bit address of the controller.
 \param  points  Output: number of points, 0 to TOUCH_MAX_POINTS; set on SUCCESS only.
 \param  p1      Output: first point; set on SUCCESS when points is at least 1.
 \return SUCCESS; TIMEOUT on a NACK or a wait past its limit; FAILURE on a bus
-        error, a lost arbitration, or a number of points above TOUCH_MAX_POINTS.
+        error or a lost arbitration.
 */
 int TouchRead(const I2c *i2c, uint8_t addr7, uint32_t *points, TouchPoint *p1);
 
