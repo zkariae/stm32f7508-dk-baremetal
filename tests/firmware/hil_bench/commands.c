@@ -5,12 +5,12 @@
 \brief      Command table of the HIL protocol firmware: HELLO, CAPS, LED, QSPI, GPIO, LCD and touch commands.
 
 \author     Z. BEN-AKKA
-\version    1.4
+\version    1.5
 \date       20/11/2026
 
 \details
   Implements protocol.md sections 6.2 to 6.10; GPIO_CONFIG and the LCD
-  commands (sections 6.11 to 6.19) are in lcd_commands.c, TOUCH_ID and
+  commands (sections 6.11 to 6.19 and 6.23) are in lcd_commands.c, TOUCH_ID and
   TOUCH_READ (sections 6.20 to 6.22) in touch_commands.c.
   - HELLO takes no argument and returns name, proto, fw and build, the
     values of the readiness banner.
@@ -34,6 +34,7 @@
 | 1.2     | 28/10/2026 | Z. BEN-AKKA | Add QSPI_ID, QSPI_READ, QSPI_ERASE and QSPI_WRITE. |
 | 1.3     | 29/10/2026 | Z. BEN-AKKA | Add the GPIO_CONFIG and LCD commands; FindArg shared as CommandFindArg. |
 | 1.4     | 20/11/2026 | Z. BEN-AKKA | Add TOUCH_ID and TOUCH_READ. |
+| 1.5     | 20/11/2026 | Z. BEN-AKKA | Add LCD_CIRCLE after LCD_PIXEL. |
 ****************************
 */
 
@@ -79,6 +80,7 @@ static const Command commands[] = {
   {HIL_CMD_LCD_SCAN, LcdScanCmd},
   {HIL_CMD_LCD_FILL, LcdFillCmd},
   {HIL_CMD_LCD_PIXEL, LcdPixelCmd},
+  {HIL_CMD_LCD_CIRCLE, LcdCircleCmd},
   {HIL_CMD_TOUCH_ID, TouchIdCmd},
   {HIL_CMD_TOUCH_READ, TouchReadCmd},
 };
