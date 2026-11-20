@@ -5,8 +5,8 @@
 \brief      FT5336 capacitive touch controller, polled over I2C.
 
 \author     Z. BEN-AKKA
-\version    1.0
-\date       18/11/2026
+\version    1.1
+\date       20/11/2026
 
 \details
   API documented in touch.h.
@@ -15,6 +15,7 @@
 | Version | Date       | Author      | Description      |
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 18/11/2026 | Z. BEN-AKKA | Initial version. |
+| 1.1     | 20/11/2026 | Z. BEN-AKKA | A count above TOUCH_MAX_POINTS gives 0 points, not FAILURE. |
 ****************************
 */
 
@@ -73,7 +74,7 @@ int TouchRead(const I2c *i2c, uint8_t addr7, uint32_t *points, TouchPoint *p1)
   }
   n = buf[0] & FT5336_TD_MASK;
   if (n > TOUCH_MAX_POINTS) {
-    return FAILURE;
+    n = 0U; // Not a touch: the ST driver reads it as none (ft5336_TS_DetectTouch)
   }
   if (n >= 1U) {
     // Screen x is the Y register, screen y the X register (ST BSP, TS_SWAP_XY)
