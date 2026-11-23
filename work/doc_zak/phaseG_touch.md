@@ -5,8 +5,8 @@
 \brief      Phase G: touch panel, 10-touch-paint run in place and HIL touch commands.
 
 \author     Z. BEN-AKKA
-\version    1.2
-\date       20/11/2026
+\version    1.3
+\date       23/11/2026
 
 \details
   Reference document of phase G. It records the frozen acceptance criteria,
@@ -21,6 +21,7 @@
 | 1.0     | 18/11/2026 | Z. BEN-AKKA | Initial version.                         |
 | 1.1     | 19/11/2026 | Z. BEN-AKKA | Lot 2 paused for phase H; lot 1 proofs.  |
 | 1.2     | 20/11/2026 | Z. BEN-AKKA | Lot 2 resumed and delivered: TD_STATUS fix, LCD_CIRCLE, LCD_LINE, accuracy and drawing tests; lot 2 proofs; release plan. |
+| 1.3     | 23/11/2026 | Z. BEN-AKKA | TUI run options, scenario cleanup and the TUI proofs; release plan checked again. |
 ****************************
 -->
 
@@ -52,6 +53,13 @@ register level (no HAL, no CMSIS):
   commands, `LCD_CIRCLE` and `LCD_LINE`, and three operator tests built on
   them: touch accuracy on random targets, free drawing as in the Paint, and
   the drawing colour chosen by name (`tests/host/config/colors.yaml`).
+- 23/11/2026: the developer added the operator tests to the TUI: an Options
+  window for the run options (operator, drawing colour, target seed) and the
+  operator instructions on the progress line (G26). A `TEST_DRAW` entry in
+  the Commands tab was proposed and dropped. Two scenarios added with G26,
+  `lcd_drawing` and `touch_targets`, were removed the same day:
+  `touch_targets` failed on the board and both repeated pytest tests;
+  `touch_check` now asks the operator only once (G27).
 
 Phase G delivers `v0.6.0` with both lots: `hil-bench` becomes
 `fw=1.4.0 proto=1.4`, with 20 commands.
@@ -77,7 +85,9 @@ of the developer. The proofs are in section 10.
 | C8 | Memory | `hil-bench` below 64 KB of internal flash; `10-touch-paint-app` below offset `0x00FF0000` of the QSPI flash (test area); framebuffer in internal SRAM | Automatic (`make <image>-size`) | Met |
 
 The tests added on 20/11/2026 (accuracy, drawing, colour) are operator
-tests of C5 and C6 on the bench: they add no criterion.
+tests of C5 and C6 on the bench: they add no criterion, and neither do the
+TUI run options of 23/11/2026. `touch_check.yaml`, named in C5, checks the
+number of points; the position is checked by the operator tests.
 
 ## 3. Constraints
 
@@ -118,12 +128,15 @@ tests/firmware/hil_bench/
 tests/host/
 ├── config/commands.yaml     Touch group; LCD_CIRCLE and LCD_LINE in the LCD group
 ├── config/colors.yaml       Colour names, French aliases, RGB565 values of the Paint
+├── config/run_options.yaml  Run options of the TUI: operator, drawing colour, target seed
 ├── hil/pyproject.toml       Marker touch
 ├── hil/cases/expected.py    COMMANDS, TOUCH_CHIP_ID, TOUCH_MAX_POINTS, radius limits
 ├── hil/cases/test_lcd.py    LCD_CIRCLE and LCD_LINE cases
 ├── hil/cases/test_touch.py  Touch cases; operator tests: corners, accuracy, drawing
 ├── hil/cases/test_protocol_caps.py  CAPS pages followed through next
 ├── tui/tests/test_catalog.py LCD_CIRCLE and LCD_LINE require LCD_INIT
+├── tui/core/run_options.py  Options checked, environment of a pytest run
+├── tui/ui/options_screen.py Options window of the Tests tab
 └── tui/scenarios/touch_check.yaml
 ```
 
@@ -145,6 +158,8 @@ Design choices:
 | `LCD_CIRCLE` | Disc of radius 1 to 100, clipped to the screen (section 6.23) | Targets of the accuracy test |
 | `LCD_LINE` | Discs every 2 px from one end to the other, as `stroke()` of the Paint; radius 1 to 20 (section 6.24) | One serial exchange per touched point: drawing from the host with one `LCD_CIRCLE` per disc was too slow. Radius 20 at most keeps a stroke across the screen far within the 2 s timeout. From radius 2 the stroke has no gap; with radius 1 a slanted stroke is dotted (simulated on 3000 random segments) |
 | Drawing colour | `HIL_DRAW_COLOR`: a name or French alias of `colors.yaml`, or `0x` and 1 to 4 digits; black by default; white refused | An environment variable reaches pytest from the TUI too; white would be invisible on the white screen |
+| TUI run options | Listed in `run_options.yaml` only: the TUI code names no variable. A value equal to its default is not sent, and the variable is removed from the environment of the run | A run uses exactly what the Options line of the Tests tab shows; `run.json` and the report keep it |
+| Operator instructions | Logger `hil.operator`, shown in bold on the progress line of the TUI until the test ends | In the monitor they were lost among the TX and RX lines of the `TOUCH_READ` polling |
 
 Sizes measured on 20/11/2026: `hil-bench` text 12645 bytes (10736 before
 phase G); `10-touch-paint-app` text 4300 bytes from `0x90000000`;
@@ -197,7 +212,7 @@ The labels of `tests/host/tui/README.md` section 6 apply.
 | Lot | Issue | Sub-steps |
 |:--|:--|:--|
 | 1. I2C and touch drivers, 10-touch-paint run in place | #99 | G2 to G13, proofs (G24) |
-| 2. TOUCH_ID and TOUCH_READ, protocol 1.4, drawing commands and tests | #100 (label `paused` removed on 19/11/2026) | G14 to G23j, proofs (G25) |
+| 2. TOUCH_ID and TOUCH_READ, protocol 1.4, drawing commands and tests | #100 (label `paused` removed on 19/11/2026) | G14 to G23j, TUI (G26, G27), proofs (G25, G28) |
 
 Each pull request carries its label and `Refs #n`. `Closes #n` acts only on
 the default branch: each lot issue is closed by hand with a comment, after
@@ -218,7 +233,11 @@ The rules of `ci/README.md` section 9 apply, with these additions:
     `expected.py`, four commits;
   - G23 to G23j (#126), at the developer's request: one branch,
     `phaseG-touch/touch-accuracy`, 24 commits, committed only after the
-    board checks.
+    board checks;
+  - G26 (#127, 15 commits) and G27 (#128, 3 commits): one branch each, one
+    commit per file.
+- A board check counts as passed once its run folder (`work/hil-results/`)
+  has been read, not before.
 - A fix found on the board goes through the same order: specification
   first, then the code (G19a to G19d).
 - Submodule: a branch in `stm32f7508-dk`, merged locally into its `main`
@@ -243,7 +262,7 @@ Tag `v0.6.0` closes phase G once C1 to C8 are met, with `hil-bench`
 
 | Step | Action |
 |:--|:--|
-| R0 | `origin/develop` checked: still `a49c55c` on 20/11/2026, nothing to synchronise |
+| R0 | `origin/develop` checked: still `a49c55c` on 23/11/2026, nothing to synchronise |
 | R1 | Pull request `phaseG-touch/integration` → `develop`; Jenkins: 246 passed, 8 skipped |
 | R2 | Pull request `develop` → `main` |
 | R3 | Annotated tag `v0.6.0` "Touch panel and paint app" on the merge commit of `main`, pushed; issues #99 and #100 closed by hand with a comment |
@@ -288,7 +307,10 @@ the sub-step.
 | G23 | `LCD_CIRCLE` (protocol 1.12 to firmware and tests), accuracy test, `touch_check.yaml` | 2 | C5, C7 | 234 + 7 skipped | Done, #126 |
 | G23i | Drawing test, then `LCD_LINE` (protocol 1.13 to firmware and tests) | 2 | C6, C7 | 246 + 8 skipped | Done, #126 |
 | G23j | `tests/host/config/colors.yaml`, `HIL_DRAW_COLOR` | 2 | C6 | 246 + 8 skipped | Done, #126 |
-| G25 | `work/doc_zak/phaseG_touch.md` 1.2 (lot 2 proofs, release plan) | 2 | — | 246 + 8 skipped | This version |
+| G25 | `work/doc_zak/phaseG_touch.md` 1.2 (lot 2 proofs, release plan) | 2 | — | 246 + 8 skipped | Done, with G28 |
+| G26 | TUI run options: `run_options.yaml`, `core/run_options.py`, `core/runner.py`, `core/report.py`, `ui/options_screen.py`, `ui/tests_pane.py`, `ui/app.py`, `test_touch.py` 1.5, their tests, `README.md`, `hil_tui.md`, two scenarios (removed by G27) | 2 | C5, C6 | 246 + 8 skipped | Done, #127 |
+| G27 | `touch_targets.yaml` and `lcd_drawing.yaml` removed, `touch_check.yaml` 1.1 | 2 | C5 | 246 + 8 skipped | Done, #128 |
+| G28 | `work/doc_zak/phaseG_touch.md` 1.3 (TUI proofs) | 2 | — | 246 + 8 skipped | This version |
 
 ## 10. Proofs
 
@@ -322,7 +344,7 @@ Recorded on 20/11/2026, `hil-bench` flashed from the branch under test.
 | C3 | Board run of G20 before the fix | `TOUCH_READ` answered `status=ERR code=DEVICE_ERROR` on every call while `TOUCH_ID` answered `0x51`: a `TD_STATUS` count above 5 at rest. Fixed by G19a to G19d |
 | C3 | miniterm after the fix, screen untouched; pytest `test_touch_read_untouched`, `test_touch_read_after_lcd_init` | `RESULT id=7 status=OK points=0`; both tests passed |
 | C4 | miniterm: `CMD id=8 command=TOUCH_READ x=1`; pytest `test_touch_extra_argument` (2 cases) | `RESULT id=8 status=ERR code=INVALID_ARGUMENT`; both cases passed, state unchanged |
-| C5 | miniterm, one finger on the screen; operator tests `test_touch_corner[top_left]` and `[top_right]` with `HIL_OPERATOR=1` | `RESULT id=6 status=OK points=1 x=443 y=238`; both corner tests passed. The corner coordinates of these runs were not copied: NON VÉRIFIÉ here, C5 values are in 10.1 |
+| C5 | miniterm, one finger on the screen; operator tests `test_touch_corner[top_left]` and `[top_right]` with `HIL_OPERATOR=1` | `RESULT id=6 status=OK points=1 x=443 y=238`; both corner tests passed. The corner coordinates of these runs were not copied (NON VÉRIFIÉ); those of 23/11/2026 are in 10.3 |
 | C5 | Operator tests `test_touch_accuracy[target1..5]`: five black discs of radius 20 at random positions | 5 passed: each touched point inside its disc; the screen no longer flashes between targets; the last disc is erased |
 | C6 | Operator test `test_touch_draw`, with `HIL_DRAW_COLOR=rouge`, then `0x07E0`, then `blanc` | Strokes follow the finger, in red then green, `1 passed` each; `blanc` refused before any drawing. With `LCD_LINE` (one exchange per point) the stroke follows the finger much faster than with one `LCD_CIRCLE` per disc (developer's check) |
 | C7 | `python3 -m pytest tests/host/hil` on the board after #126 | 246 passed, 8 skipped (254 collected); the 8 skipped are the operator tests. Required check green on #113 to #126 (merged). TUI host tests: 291 passed, 24 deselected |
@@ -333,3 +355,41 @@ of 09:22 stopped Jenkins from starting processes until it was restarted;
 the ST-LINK port became `/dev/ttyACM1` (section 3); one TUI timing test
 (`test_progress_box.py::test_auto_close_waits_until_on_top`) timed out once
 under load and passed on the next run.
+
+### 10.3 TUI
+
+Recorded on 23/11/2026, read in the run folders `work/hil-results/20261123-*`
+(`run.json`, `events.jsonl`). Repository commit: `b1a4725-dirty` before the
+commits of G26, `8f2ee7e` from 11:04, `34c83b2-dirty` from 11:30, `d8bfb4c`
+from 11:35. Each pytest run flashed `hil-bench` (`fw=1.4.0 proto=1.4`)
+first.
+
+| # | Proof | Result |
+|:-:|:--|:--|
+| C2 to C6 | Run `114016`: `cases/test_touch.py`, `HIL_OPERATOR=1 HIL_DRAW_COLOR=yellow HIL_TOUCH_SEED=194504` set in the Options window | **14 passed**, verdict PASS |
+| C5 | Corners of this run | Top left `x=33 y=34`, top right `x=470 y=31` |
+| C5 | Targets 1 to 5 of this run, centres (110, 134), (405, 77), (64, 205), (382, 142), (158, 35) | Distances 18.6, 12.2, 7.2, 3.6 and 11.3 px, radius 20: 5 inside |
+| C5 | Seed 194504 replayed from run `113551` | Same five centres. In `113551`, targets 1 and 5 were outside (24.1 and 32.2 px) and passed at the same places in `114016`: most likely the gesture, not the panel |
+| C5 | `touch_check` 1.1, runs `113021`, `113052`, `113106` | PASS, FAIL, PASS. The FAIL read `points=0` at the last step: most likely no finger on the screen (NON VÉRIFIÉ) |
+| C6 | `test_touch_draw` in seven runs | All passed: black 443, 159 and 29 points, green 362 and 307, yellow 134 and 119; drawn points read back with `LCD_PIXEL` |
+| C7 | `python3 -m pytest tests/host/tui`; `tests/host/hil -m unit`; collection | 351 passed, 24 deselected, with the files of #127 and again with those of #128; 42 passed and 254 collected on the merged code (`59a2bc9`). Required check green on #127 and #128 |
+
+Runs that failed, all before the final run:
+
+| Run | Failure |
+|:--|:--|
+| `103628`, `110507` | `touch_check` 1.0: `points` expected 1, got 0. It read once, the result within 46 to 154 ms after the answer (all these runs), so the finger had to stay on the screen while answering: replaced by 1.1 |
+| `103643`, `103713`, `110532` | `touch_targets`, same message, most likely the same cause: removed by G27 |
+| `105300` | Top left: no touch within 10 s; top right: `x=313 y=177`; target 4: 30.3 px |
+| `105351` | Corners touched the other way round (`x=472 y=19` for top left, `x=1 y=34` for top right); target 1: 27.7 px |
+| `105658` | Top left: `x=447 y=21`; top right passed |
+| `113520` | Interrupted by the operator; top left: no touch within 10 s |
+
+Not played in the TUI: Export (F4) of a run with options, a colour typed as
+`0x07E0`, `blanc`, and red. Covered without the board: the report of run
+`114016`, built by `core/report.py`, has the line `Run options
+HIL_OPERATOR=1 HIL_DRAW_COLOR=yellow HIL_TOUCH_SEED=194504`; `0x07E0` gives
+green and `blanc` is refused with "white is invisible on the white screen"
+by the functions of `test_touch.py`; the typed field is tested by
+`test_ui_options.py`. Red, `0x07E0` and `blanc` were played from a terminal
+on 20/11/2026 (10.2).
