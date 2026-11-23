@@ -6,8 +6,8 @@ The report gives (section 4.4) the verdict, the totals, one line per test
 with its outcome of tests/protocol.md section 7.3, the banner of the first
 session on the board (the image under test; the unit tests of the fake
 firmware log banners too, but no session line), the Git
-commit and the bench.yaml used, the timeouts that differ from section 8.1,
-and for each failure the last request and the records received for it
+commit and the bench.yaml used, the run options (environment variables of
+run.json), the timeouts that differ from section 8.1, and for each failure the last request and the records received for it
 (section 8.4).
 
   - events.jsonl is always read again; the totals are counted with Totals,
@@ -33,12 +33,13 @@ Command line, for a run killed with the TUI (no port, no board):
 
 No Textual import.
 
-Version: 1.1
-Date: 10/11/2026
+Version: 1.2
+Date: 23/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  10/11/2026  Initial version.
   1.1  10/11/2026  Fix a test killed after its setup shown as PASS: finished only with a counted report.
+  1.2  23/11/2026  Run options line.
 """
 
 import argparse
@@ -102,6 +103,7 @@ class Report:
     ended: float | None = None
     commit: str = ""
     bench: str = ""
+    env: dict = field(default_factory=dict)  # Run options set for the run
     banner: str = ""
     overrides: list = field(default_factory=list)  # (name, value, protocol value)
     tests: list = field(default_factory=list)
@@ -132,7 +134,7 @@ def build(folder: Path | str) -> Report:
     meta = _read_meta(folder / "run.json")
     report = Report(folder=folder, kind=meta.get("kind", "pytest"), selection=list(meta.get("selection") or []),
                     started=meta.get("started"), ended=meta.get("ended"), commit=meta.get("commit", ""),
-                    bench=meta.get("bench", ""), exitstatus=meta.get("exitstatus"),
+                    bench=meta.get("bench", ""), env=_env(meta), exitstatus=meta.get("exitstatus"),
                     forced=bool(meta.get("forced", False)))
     events = _read_events(events_path, report.bad_lines)
     totals, tests, logs = Totals(), {}, {}
@@ -171,6 +173,11 @@ def _read_meta(path: Path) -> dict:
     except (OSError, ValueError):
         return {}  # Killed before run.json was written, or cut while written
     return meta if isinstance(meta, dict) else {}
+
+
+def _env(meta: dict) -> dict:
+    env = meta.get("env")  # Not in the runs made before runner.py 1.2
+    return env if isinstance(env, dict) else {}
 
 
 def _read_events(path: Path, bad_lines: list) -> list:
@@ -251,6 +258,7 @@ def _summary(report: Report) -> list:
             ("Started", _when(report.started)), ("Duration", _length(report)),
             ("Exit status", "not recorded" if report.exitstatus is None else str(report.exitstatus)),
             ("Git commit", report.commit or "not recorded"), ("bench.yaml", report.bench or "not recorded"),
+            ("Run options", " ".join(f"{name}={value}" for name, value in report.env.items()) or "none"),
             ("Banner", report.banner or "not recorded")]
 
 

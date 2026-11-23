@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: MIT
+# ****************************
+# \file       tests/host/config/colors.yaml
+# \brief      Colour names and their RGB565 values, for the host tests that draw on the LCD.
+#
+# \author     Z. BEN-AKKA
+# \version    1.0
+# \date       20/11/2026
+#
+# \details
+#   Turns a colour name into the RGB565 value of an LCD_LINE, LCD_CIRCLE or
+#   LCD_FILL color argument (tests/protocol.md section 6.12). Used by the
+#   drawing test of tests/host/hil/cases/test_touch.py (HIL_DRAW_COLOR).
+#
+#   Names are matched without case; the aliases are the French names.
+#   Values are quoted so YAML keeps them as text: an unquoted 0xF800 would be
+#   read as a number. Sources: palette[], WHITE and GREY of
+#   dev/apps/10-touch-paint/main.c, so the drawing test and the application
+#   use the same colours.
+#
+# \section colors_yaml_version_history Version history
+# | Version | Date       | Author      | Description      |
+# |:-------:|:----------:|:------------|:-----------------|
+# | 1.0     | 20/11/2026 | Z. BEN-AKKA | Initial version. |
+# ****************************
+
+schema_version: 1
+
+colors:
+  black:   {rgb565: "0x0000", aliases: [noir, noire]}
+  white:   {rgb565: "0xFFFF", aliases: [blanc, blanche]}
+  red:     {rgb565: "0xF800", aliases: [rouge]}
+  green:   {rgb565: "0x07E0", aliases: [vert, verte]}
+  blue:    {rgb565: "0x001F", aliases: [bleu, bleue]}
+  yellow:  {rgb565: "0xFFE0", aliases: [jaune]}
+  cyan:    {rgb565: "0x07FF", aliases: []}
+  magenta: {rgb565: "0xF81F", aliases: []}
+  orange:  {rgb565: "0xFD20", aliases: []}
+  grey:    {rgb565: "0x8410", aliases: [gris, grise]}

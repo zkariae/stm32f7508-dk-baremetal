@@ -12,6 +12,12 @@ in another family clears the selection; one scenario at a time. The line
 so T7 brings T3 to T6; the whole pytest family is the whole suite
 (everything), a whole file is passed as the file.
 
+The line "Options" gives the run options of the next pytest run, as the
+application chose them (core/run_options.py); the Options button posts
+TestsPane.Options. An instruction to the operator (a log record of the logger
+hil.operator) shows in bold on the progress line, away from the TX and RX
+lines of the monitor, until its test ends; a result line keeps it.
+
 The pane runs nothing: Run, Stop and Refresh post TestsPane.Run,
 TestsPane.Stop and TestsPane.Refresh, and the application wires them to the
 runner (E24). It calls set_enabled() and set_running() for the buttons,
@@ -26,11 +32,12 @@ gives the verdict.
 Not done here: the session, the runner, freeing the port and UNKNOWN_IMAGE
 (app.py), the report (report.py).
 
-Version: 1.0
-Date: 10/11/2026
+Version: 1.1
+Date: 23/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  10/11/2026  Initial version.
+  1.1  23/11/2026  Options button and line; operator instructions on the progress line.
 """
 
 import time
@@ -51,6 +58,7 @@ KIND_OF_PREFIX = {"rx:": "rx_check", "scenario:": "scenario"}  # Event nodeid pr
 OUTCOME_STYLES = {"PASS": "bold green", "SKIPPED": "dim", "FUNCTIONAL_ERROR": "bold red"}  # Others: yellow
 VERDICT_STYLES = {"PASS": "bold white on green4", "FAIL": "bold white on red3",
                   "BENCH ERROR": "bold black on yellow3", "INTERRUPTED": "bold black on yellow3"}
+OPERATOR_LOGGER = "hil.operator"  # Instructions of a test to the operator
 ERROR_MAX = 200  # Characters of a family error shown in the tree
 RESULT_LINES = 5000  # Result lines kept: a full suite fits
 
@@ -97,10 +105,11 @@ class TestsPane(Horizontal):
     TestsPane > TestTree { width: 2fr; border: round $primary; }
     TestsPane > Vertical { width: 3fr; border: round $primary; padding: 0 1; }
     TestsPane #selection { height: auto; max-height: 3; }
+    TestsPane #options-text { height: auto; max-height: 2; }
     TestsPane #progress { height: auto; border-top: solid $primary; }
     TestsPane #results { height: 1fr; border-top: solid $primary; }
     TestsPane #actions { height: auto; }
-    TestsPane #actions Button { margin-right: 1; }
+    TestsPane #actions Button { margin-right: 1; min-width: 10; }  /* Four buttons fit in 80 columns */
     """
 
     class Run(Message):
@@ -115,6 +124,9 @@ class TestsPane(Horizontal):
     class Stop(Message):
         """Stop request for the run in progress."""
 
+    class Options(Message):
+        """Open the Options window."""
+
     class Refresh(Message):
         """Discover the families again."""
 
@@ -127,6 +139,7 @@ class TestsPane(Horizontal):
         self.marked = set()  # Item ids marked in that family
         self.enabled = False
         self.running = False
+        self.has_options = False
         self.outcomes = {}  # (kind, item id): outcome of the last run
         self.totals = Totals()
         self._reset_run()
@@ -139,11 +152,13 @@ class TestsPane(Horizontal):
         with Vertical() as right:
             right.border_title = "Run"
             yield Static("", id="selection")
+            yield Static("", id="options-text")
             yield Static("", id="progress")
             yield RichLog(max_lines=RESULT_LINES, markup=False, highlight=False, wrap=False, id="results")
             with Horizontal(id="actions"):
                 yield Button("Run", id="run", variant="primary", disabled=True, compact=True)
                 yield Button("Stop", id="stop", variant="error", disabled=True, compact=True)
+                yield Button("Options", id="options", disabled=True, compact=True)
                 yield Button("Refresh", id="refresh", compact=True)
 
     def on_mount(self) -> None:
@@ -188,6 +203,13 @@ class TestsPane(Horizontal):
         self.running = running
         self._update_buttons()
 
+    def set_options(self, text: str, error: str = "") -> None:
+        """The run options of the next pytest run, or why there are none."""
+        self.has_options = not error
+        line = Text.assemble(("Options   ", "bold"), (error, "bold red") if error else (text or "none", ""))
+        self.query_one("#options-text", Static).update(line)
+        self._update_buttons()
+
     def start_run(self, kind: str, title: str) -> None:
         """A run starts: counters, results and the marks of the last run are cleared."""
         self.totals = Totals()
@@ -219,9 +241,13 @@ class TestsPane(Horizontal):
         elif kind == "log" and event.get("logger") == "tui.runner":
             self.note = event.get("text", "")
             self._result_line(Text(f"note  {self.note}", style="bold yellow"))
+        elif kind == "log" and event.get("logger") == OPERATOR_LOGGER:
+            self.instruction = event.get("text", "")
+            self._result_line(Text(f"operator  {self.instruction}", style="bold cyan"))
         elif kind == "run_end":
             self.verdict = event.get("verdict")
             self.current = None
+            self.instruction = ""
         else:
             return
         self._show_progress()
@@ -336,12 +362,14 @@ class TestsPane(Horizontal):
         self.current = None
         self.phases = {}
         self.note = ""
+        self.instruction = ""
         self.verdict = None
 
     def _finish_test(self, nodeid: str | None) -> None:
         state = self.phases.pop(nodeid, None) if nodeid else None
         self.done += 1
         self.current = None
+        self.instruction = ""
         if state is None or state["outcome"] is None:
             return  # Interrupted before its first report: not counted, as Totals does
         outcome = state["outcome"]
@@ -378,6 +406,8 @@ class TestsPane(Horizontal):
             text.append(f"{counts[key]}  ", style=f"bold {style}".strip() if counts[key] else "")
         if self.current:
             text.append(f"\nnow  {self.current}", style="cyan")
+        if self.instruction:
+            text.append(f"\n>>> {self.instruction}", style="bold")
         if self.note:
             text.append(f"\n{self.note}", style="bold yellow")
         self.query_one("#progress", Static).update(text)
@@ -388,6 +418,7 @@ class TestsPane(Horizontal):
         kind = self.selection()[0]
         self.query_one("#run", Button).disabled = not self.enabled or self.running or kind is None
         self.query_one("#stop", Button).disabled = not self.running
+        self.query_one("#options", Button).disabled = self.running or not self.has_options
         self.query_one("#refresh", Button).disabled = self.running
 
     @on(Button.Pressed, "#run")
@@ -400,6 +431,11 @@ class TestsPane(Horizontal):
     def _stop(self) -> None:
         if self.running:
             self.post_message(self.Stop())
+
+    @on(Button.Pressed, "#options")
+    def _options(self) -> None:
+        if not self.running and self.has_options:
+            self.post_message(self.Options())
 
     @on(Button.Pressed, "#refresh")
     def _refresh(self) -> None:

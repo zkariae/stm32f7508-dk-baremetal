@@ -4,14 +4,14 @@
 # \brief      HIL command catalogue: arguments, defaults and effects of each command.
 #
 # \author     Z. BEN-AKKA
-# \version    1.0
-# \date       09/11/2026
+# \version    1.3
+# \date       20/11/2026
 #
 # \details
 #   CAPS gives the command names only; this catalogue tells how to ask for
 #   each command, so the TUI builds its forms from data (tests/host/tui/
 #   README.md section 4.2). Source: tests/protocol.md section 6, not the
-#   firmware. The order follows the CAPS list of protocol 1.3.
+#   firmware. The order follows the CAPS list of protocol 1.4.
 #
 #   Entry fields:
 #     group     Display group.
@@ -39,6 +39,9 @@
 # | Version | Date       | Author      | Description      |
 # |:-------:|:----------:|:------------|:-----------------|
 # | 1.0     | 09/11/2026 | Z. BEN-AKKA | Initial version. |
+# | 1.1     | 20/11/2026 | Z. BEN-AKKA | Add TOUCH_ID and TOUCH_READ (protocol 1.4). |
+# | 1.2     | 20/11/2026 | Z. BEN-AKKA | Add LCD_CIRCLE (protocol 1.4). |
+# | 1.3     | 20/11/2026 | Z. BEN-AKKA | Add LCD_LINE (protocol 1.4). |
 # ****************************
 
 schema_version: 1
@@ -161,3 +164,40 @@ commands:
     args:
       x: {type: int, min: 0, max: 479, default: 0}
       y: {type: int, min: 0, max: 271, default: 0}
+
+  LCD_CIRCLE:
+    group: LCD
+    summary: Fill a disc of the framebuffer with one colour
+    spec: "6.23"
+    requires: LCD_INIT
+    args:
+      x: {type: int, min: 0, max: 479, default: 240}
+      y: {type: int, min: 0, max: 271, default: 136}
+      radius: {type: int, min: 1, max: 100, default: 20}
+      color: {type: color, default: 0x0000}
+
+  LCD_LINE:
+    group: LCD
+    summary: Draw a stroke of discs between two points
+    spec: "6.24"
+    requires: LCD_INIT
+    args:
+      x0: {type: int, min: 0, max: 479, default: 40}
+      y0: {type: int, min: 0, max: 271, default: 136}
+      x1: {type: int, min: 0, max: 479, default: 440}
+      y1: {type: int, min: 0, max: 271, default: 136}
+      radius: {type: int, min: 1, max: 20, default: 4}
+      color: {type: color, default: 0x0000}
+
+  # No requires: the touch commands do not depend on LCD_INIT (section 6.20)
+  TOUCH_ID:
+    group: Touch
+    summary: Read the chip identifier of the touch controller
+    spec: "6.21"
+    args: {}
+
+  TOUCH_READ:
+    group: Touch
+    summary: Read the number of touch points and the first point
+    spec: "6.22"
+    args: {}

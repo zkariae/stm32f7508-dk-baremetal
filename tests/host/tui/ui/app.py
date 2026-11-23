@@ -24,6 +24,11 @@ core/runner.py Run (C2):
     go through Session.send: the scenario thread waits for the answer the UI
     thread hands over, and a lost session ends the scenario with the outcome
     of the session text. Its prompts use the Yes or No dialog.
+The run options of the pytest runs (core/run_options.py) are chosen in the
+Options window (ui/options_screen.py) and stay from one run to the next until
+the TUI closes; they start from the environment of the TUI. T1-T8 and the
+scenarios get none. With a bad options file, the Tests tab shows the error
+and a pytest run gets the environment of the TUI unchanged.
 Each event of the run reaches the tests pane and the monitor on the UI
 thread: the runner dispatcher queues it, and every RUN_REFRESH the queue is
 handed over with one screen update for all, so a full suite (up to 300
@@ -68,8 +73,8 @@ has no frame, the screen behind it turns dark blue and No keeps the focus.
 The command palette (ctrl+p) still offers the Textual themes; a dark one
 brings back the Textual palette, since ANSI replaces only the light one.
 
-Version: 1.7
-Date: 16/11/2026
+Version: 1.8
+Date: 23/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  09/11/2026  Initial version.
@@ -80,9 +85,11 @@ History:
   1.5  13/11/2026  Progress box: Export by its real steps, and a Connection box while the session or port is lost.
   1.6  15/11/2026  F6/ctrl+b works under the Connection box and closes it.
   1.7  16/11/2026  The run refresh timer does nothing once the screens are gone, at exit.
+  1.8  23/11/2026  Run options of the pytest runs: Options window, kept from one run to the next.
 """
 
 import collections
+import os
 import re
 import threading
 import time
@@ -98,7 +105,7 @@ from textual.widgets import Button, Footer, Label, Static, TabbedContent, TabPan
 
 from adapters.board import parse_banner  # tests/host/hil is on the path once core.session is imported
 from adapters.outcomes import HilOutcome
-from core import report
+from core import report, run_options
 from core.catalog import Catalog
 from core.runner import RESULTS, Run
 from core.scenario import ScenarioError, load as load_scenario
@@ -107,6 +114,7 @@ from core.suites import SCENARIOS_DIR, discover_all
 from ui import theme
 from ui.commands_pane import CommandsPane
 from ui.monitor import DIRECTIONS, Monitor, MonitorHandler, MonitorLine, attach, detach
+from ui.options_screen import OptionsScreen
 from ui.progress_box import ProgressBox
 from ui.tests_pane import TestsPane
 
@@ -262,7 +270,8 @@ class HilApp(App):
     ]
 
     def __init__(self, bench: dict, catalog: Catalog, session_factory=Session, port: str | None = None,
-                 run_factory=Run, scenarios_dir=SCENARIOS_DIR, discover=discover_all):
+                 run_factory=Run, scenarios_dir=SCENARIOS_DIR, discover=discover_all,
+                 options_file=run_options.DEFAULT_FILE, environ=os.environ):
         super().__init__()
         self.bench = bench
         self.catalog = catalog
@@ -270,6 +279,10 @@ class HilApp(App):
         self.run_factory = run_factory
         self.scenarios_dir = scenarios_dir
         self.discover = discover
+        self.options_file = options_file
+        self.environ = environ
+        self.options = None  # RunOptions, or None with a bad options file
+        self.option_values = {}  # Values of the next pytest run
         self.port = port or bench["serial"]["port"]
         self.session = None
         self.handler = None
@@ -315,6 +328,7 @@ class HilApp(App):
         self.monitor = self.query_one(Monitor)
         self.pane = self.query_one(CommandsPane)
         self.tests = self.query_one(TestsPane)
+        self._load_options()
         self.handler = MonitorHandler(lambda line: self.call_from_thread(self._monitor_line, line))
         attach(self.handler)
         self.session = self.session_factory(self.bench, self._from_session, port=self.port)
@@ -533,6 +547,23 @@ class HilApp(App):
         self._say(f"{count} tests found" + (f", {errors} discovery errors" if errors else ""),
                   "yellow" if errors else "")
 
+    def _load_options(self) -> None:
+        try:
+            self.options = run_options.load(self.options_file)
+        except run_options.OptionsError as error:
+            self.tests.set_options("", str(error))
+            return
+        self._options_chosen(self.options.initial(self.environ))
+
+    def on_tests_pane_options(self, message: TestsPane.Options) -> None:
+        if self.options is not None and not self.busy and not self.quitting:
+            self.push_screen(OptionsScreen(self.options, self.option_values), self._options_chosen)
+
+    def _options_chosen(self, values: dict | None) -> None:
+        if values is not None:  # None: cancelled
+            self.option_values = values
+            self.tests.set_options(self.options.text(values))
+
     def on_tests_pane_run(self, message: TestsPane.Run) -> None:
         if self.busy or self.quitting:
             return
@@ -540,7 +571,8 @@ class HilApp(App):
         if message.kind == "scenario":
             self._start_scenario(message.selection[0], title)
             return
-        self.pending_run = (message.kind, list(message.selection), message.everything, title)
+        env = self.options.environment(self.option_values) if message.kind == "pytest" and self.options else {}
+        self.pending_run = (message.kind, list(message.selection), message.everything, title, env)
         self._say("Releasing the port for the run...")
         self.session.release()  # The run starts on the RUNNING event: the port is closed then
 
@@ -560,9 +592,10 @@ class HilApp(App):
                         "scenario", title)
 
     def _start_pending_run(self) -> None:
-        kind, selection, everything, title = self.pending_run
+        kind, selection, everything, title, env = self.pending_run
         self.pending_run = None
-        self._start_run(lambda on_event: self.run_factory(kind, selection, on_event, everything=everything),
+        self._start_run(lambda on_event: self.run_factory(kind, selection, on_event, everything=everything,
+                                                          env=env),
                         kind, title)
 
     def _start_run(self, build, kind: str, title: str) -> None:
