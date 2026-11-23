@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: MIT
+# ****************************
+# \file       tests/host/tui/scenarios/touch_targets.yaml
+# \brief      Scenario: touch five black discs drawn one after the other; the operator judges each position.
+#
+# \author     Z. BEN-AKKA
+# \version    1.0
+# \date       20/11/2026
+#
+# \details
+#   Played by the TUI in the open session (README.md section 4.5, format in
+#   core/scenario.py). On a white screen, five black discs of radius 20
+#   (LCD_CIRCLE, section 6.23) appear one at a time: the centre, then near
+#   the four corners. For each one the operator keeps a finger on the disc,
+#   TOUCH_READ must give one point (section 6.22) and the TUI shows its x and
+#   y, then the operator says whether they are within 20 pixels of the
+#   centre of the disc. The two top discs also check the axis swap (section
+#   6.20). Only the previous disc is painted white, so the screen does not
+#   flash; the last one is erased at the end.
+#
+#   A scenario compares values for equality only, at fixed positions: the
+#   distance is judged by the operator. tests/host/hil/cases/test_touch.py
+#   (test_touch_accuracy) computes it, on random positions.
+#
+# \section tui_touch_targets_yaml_version_history Version history
+# | Version | Date       | Author      | Description      |
+# |:-------:|:----------:|:------------|:-----------------|
+# | 1.0     | 20/11/2026 | Z. BEN-AKKA | Initial version. |
+# ****************************
+
+name: Touch targets
+description: Touch five black discs, at the centre then near each corner; check each position shown.
+steps:
+  - {command: LCD_INIT}
+  - {command: LCD_FILL, args: {color: "0xFFFF"}}
+
+  # Target 1: centre
+  - {command: LCD_CIRCLE, args: {x: 240, y: 136, radius: 20, color: "0x0000"}}
+  - {prompt: "Target 1/5: touch the black disc and keep your finger on it. Ready?"}
+  - {command: TOUCH_READ, expect: {points: "1"}}
+  - {prompt: "Are x and y within 20 px of (240, 136)?"}
+  - {prompt: "Lift your finger. Ready?"}
+
+  # Target 2: top left
+  - {command: LCD_CIRCLE, args: {x: 240, y: 136, radius: 20, color: "0xFFFF"}}
+  - {command: LCD_CIRCLE, args: {x: 60, y: 60, radius: 20, color: "0x0000"}}
+  - {prompt: "Target 2/5: touch the black disc and keep your finger on it. Ready?"}
+  - {command: TOUCH_READ, expect: {points: "1"}}
+  - {prompt: "Are x and y within 20 px of (60, 60)?"}
+  - {prompt: "Lift your finger. Ready?"}
+
+  # Target 3: top right
+  - {command: LCD_CIRCLE, args: {x: 60, y: 60, radius: 20, color: "0xFFFF"}}
+  - {command: LCD_CIRCLE, args: {x: 420, y: 60, radius: 20, color: "0x0000"}}
+  - {prompt: "Target 3/5: touch the black disc and keep your finger on it. Ready?"}
+  - {command: TOUCH_READ, expect: {points: "1"}}
+  - {prompt: "Are x and y within 20 px of (420, 60)?"}
+  - {prompt: "Lift your finger. Ready?"}
+
+  # Target 4: bottom left
+  - {command: LCD_CIRCLE, args: {x: 420, y: 60, radius: 20, color: "0xFFFF"}}
+  - {command: LCD_CIRCLE, args: {x: 60, y: 212, radius: 20, color: "0x0000"}}
+  - {prompt: "Target 4/5: touch the black disc and keep your finger on it. Ready?"}
+  - {command: TOUCH_READ, expect: {points: "1"}}
+  - {prompt: "Are x and y within 20 px of (60, 212)?"}
+  - {prompt: "Lift your finger. Ready?"}
+
+  # Target 5: bottom right, then erased
+  - {command: LCD_CIRCLE, args: {x: 60, y: 212, radius: 20, color: "0xFFFF"}}
+  - {command: LCD_CIRCLE, args: {x: 420, y: 212, radius: 20, color: "0x0000"}}
+  - {prompt: "Target 5/5: touch the black disc and keep your finger on it. Ready?"}
+  - {command: TOUCH_READ, expect: {points: "1"}}
+  - {prompt: "Are x and y within 20 px of (420, 212)?"}
+  - {prompt: "Lift your finger. Ready?"}
+  - {command: LCD_CIRCLE, args: {x: 420, y: 212, radius: 20, color: "0xFFFF"}}

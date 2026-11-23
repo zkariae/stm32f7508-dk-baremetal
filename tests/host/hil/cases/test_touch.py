@@ -9,8 +9,10 @@ failing. points=0 needs that nobody touches the screen during the run (section
 rejected request must leave the state unchanged (section 7.1).
 
 The corner, accuracy and drawing tests need an operator and run only with
-HIL_OPERATOR=1. The corner tests ask for a touch near the top-left, then the
-top-right corner, and check the position, which also checks the axis swap.
+HIL_OPERATOR=1. Their instructions go to the terminal and to the logger
+hil.operator, which the TUI shows on its progress line. The corner tests ask
+for a touch near the top-left, then the top-right corner, and check the
+position, which also checks the axis swap.
 The accuracy tests draw five black discs one after the other, at random
 positions on a white screen (LCD_FILL, LCD_CIRCLE, section 6.23), and check
 that the touched point is inside each disc. The screen is made white once;
@@ -32,8 +34,8 @@ Not tested: DEVICE_TIMEOUT and DEVICE_ERROR, which need a missing controller
 or a faulty bus, and the points after the first, which TOUCH_READ does not
 report.
 
-Version: 1.4
-Date: 20/11/2026
+Version: 1.5
+Date: 23/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  20/11/2026  Initial version.
@@ -41,6 +43,7 @@ History:
   1.2  20/11/2026  Add the drawing test, as in the 10-touch-paint application.
   1.3  20/11/2026  Drawing test: one LCD_LINE per point instead of one LCD_CIRCLE per disc.
   1.4  20/11/2026  Drawing test: colour chosen with HIL_DRAW_COLOR, names from colors.yaml.
+  1.5  23/11/2026  Operator instructions, corner tests included, on the logger hil.operator for the TUI.
 """
 
 import logging
@@ -84,7 +87,7 @@ DRAW_CHECKED = 20     # Drawn points read back with LCD_PIXEL, at most
 COLORS_FILE = Path(__file__).resolve().parents[2] / "config" / "colors.yaml"
 HEX_COLOR = re.compile(r"0x[0-9A-Fa-f]{1,4}")  # RGB565 argument, section 6.12
 
-log = logging.getLogger("hil.touch")  # Shown live by the TUI
+log = logging.getLogger("hil.operator")  # Instructions: the TUI shows them on its progress line
 _target = {"centre": None}  # Disc on the screen, kept from one accuracy test to the next
 
 
@@ -168,8 +171,7 @@ def wait_for_points(board, touched: bool) -> dict:
 def test_touch_corner(touch, capsys, corner, in_corner):
     """Screen x is the controller Y register (section 6.20): a wrong swap fails top-right."""
     wait_for_points(touch, touched=False)  # The previous touch must not count
-    with capsys.disabled():
-        print(f"\n>>> Touch the {corner} corner of the screen within {TOUCH_WAIT:.0f} s")
+    tell(capsys, f"Touch the {corner} corner of the screen within {TOUCH_WAIT:.0f} s")
     fields = wait_for_points(touch, touched=True)
     points, x, y = int(fields["points"]), int(fields["x"]), int(fields["y"])
     assert 1 <= points <= TOUCH_MAX_POINTS
