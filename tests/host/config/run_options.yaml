@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: MIT
+# ****************************
+# \file       tests/host/config/run_options.yaml
+# \brief      Run options of the TUI: environment variables that the pytest tests read.
+#
+# \author     Z. BEN-AKKA
+# \version    1.0
+# \date       23/11/2026
+#
+# \details
+#   Each entry is one environment variable of a pytest run. The TUI builds the
+#   Options window of its Tests tab from this file (tests/host/tui/README.md
+#   section 4.3) and passes the chosen values to the run; its code names none
+#   of these variables. A new option needs an entry here and a test that
+#   reads the variable, nothing else.
+#
+#   Fields: type, label (field name in the window), help (one line under it).
+#     bool    sent as 1 when ticked, not sent otherwise
+#     choice  values_from: {file, key} names a mapping of a YAML file of this
+#             folder; its keys are the values, the aliases of an entry are
+#             accepted too. other: {pattern, hint} also accepts a typed text.
+#             default: one of the values
+#     int     min, max; empty by default
+#   A value equal to its default is not sent: the test then uses its own.
+#   The defaults below are those of tests/host/hil/cases/test_touch.py.
+#
+# \section run_options_yaml_version_history Version history
+# | Version | Date       | Author      | Description      |
+# |:-------:|:----------:|:------------|:-----------------|
+# | 1.0     | 23/11/2026 | Z. BEN-AKKA | Initial version. |
+# ****************************
+
+schema_version: 1
+
+options:
+  HIL_OPERATOR:
+    type: bool
+    label: Operator at the board
+    help: Runs the tests that need an operator (corners, accuracy, drawing); skipped otherwise.
+
+  HIL_DRAW_COLOR:
+    type: choice
+    label: Drawing colour
+    help: Colour of the drawing test, on a white screen.
+    values_from: {file: colors.yaml, key: colors}
+    other: {pattern: "0x[0-9A-Fa-f]{1,4}", hint: "0x and 1 to 4 hexadecimal digits"}  # RGB565, protocol.md section 6.12
+    default: black
+
+  HIL_TOUCH_SEED:
+    type: int
+    label: Target seed
+    help: "Accuracy test only. Empty: new random targets. A seed shown by an earlier run: the same targets again."
+    min: 0
+    max: 999999  # test_touch.py draws its own seed below 1 000 000

@@ -5,12 +5,12 @@
 \brief      HIL firmware-to-host protocol specification.
 
 \author     Z. BEN-AKKA
-\version    1.9
-\date       29/10/2026
+\version    1.13
+\date       20/11/2026
 
 \details
   Specifies the HIL host-firmware serial interface, including record syntax,
-  version compatibility, HELLO, CAPS, LED, QSPI, GPIO and LCD commands, reset reporting, error handling,
+  version compatibility, HELLO, CAPS, LED, QSPI, GPIO, LCD and touch commands, reset reporting, error handling,
   transaction timeouts, and session recovery. The document revision is
   independent of the wire protocol and firmware versions.
 
@@ -27,6 +27,10 @@
 | 1.7     | 28/10/2026 | Z. BEN-AKKA | QSPI_ID result field jedec_id: id is a reserved key. |
 | 1.8     | 28/10/2026 | Z. BEN-AKKA | QSPI: page rule and test area layout (section 6.6). |
 | 1.9     | 29/10/2026 | Z. BEN-AKKA | Specify GPIO_CONFIG and the LCD commands; protocol 1.3. |
+| 1.10    | 19/11/2026 | Z. BEN-AKKA | Specify TOUCH_ID and TOUCH_READ; protocol 1.4. |
+| 1.11    | 20/11/2026 | Z. BEN-AKKA | Touch: a count above 5 means no touch, not DEVICE_ERROR (section 6.20). |
+| 1.12    | 20/11/2026 | Z. BEN-AKKA | Specify LCD_CIRCLE (section 6.23); protocol 1.4. |
+| 1.13    | 20/11/2026 | Z. BEN-AKKA | Specify LCD_LINE (section 6.24); protocol 1.4. |
 ****************************
 -->
 
@@ -45,10 +49,10 @@ the STM32F7508-DK HIL bench firmware. It specifies:
 - timeouts and recovery.
 
 
-The command set of protocol 1.3 contains `HELLO`, `CAPS`, `LED_SET`,
+The command set of protocol 1.4 contains `HELLO`, `CAPS`, `LED_SET`,
 `LED_GET`, `QSPI_ID`, `QSPI_READ`, `QSPI_ERASE`, `QSPI_WRITE`, `GPIO_CONFIG`,
-`LCD_INIT`, `LCD_CLOCK`, `LCD_TIMING`, `LCD_LAYER`, `LCD_SCAN`, `LCD_FILL` and
-`LCD_PIXEL`. Additional commands SHALL be specified in section 6 before either
+`LCD_INIT`, `LCD_CLOCK`, `LCD_TIMING`, `LCD_LAYER`, `LCD_SCAN`, `LCD_FILL`,
+`LCD_PIXEL`, `TOUCH_ID` and `TOUCH_READ`. Additional commands SHALL be specified in section 6 before either
 endpoint implements them.
 
 ### 1.1 Conventions
@@ -153,7 +157,7 @@ This document uses three independent version identifiers:
 | Protocol version | `proto` field of the readiness banner | Identifies the wire protocol implemented by the firmware. |
 | Firmware version | `fw` field of the readiness banner | Identifies the firmware image. |
 
-This revision of the document specifies protocol version **1.3**. A document
+This revision of the document specifies protocol version **1.4**. A document
 revision MAY change without changing the protocol version, for example to
 clarify wording.
 
@@ -506,16 +510,21 @@ RESULT id=2 status=OK total=8 start=0 names=HELLO,CAPS,LED_SET,LED_GET,QSPI_ID,Q
 END id=2
 ```
 
-Example (informative), with two pages, for the sixteen commands of protocol
-1.3:
+Example (informative), with three pages, for the twenty commands of
+protocol 1.4. The second page stops before `LCD_PIXEL`: the room for
+` next=15` must remain. The pages are the same for every request id, up to
+`id=65535` (126 bytes for the longest line):
 
 ```text
 CMD id=2 command=CAPS
-RESULT id=2 status=OK total=16 start=0 names=HELLO,CAPS,LED_SET,LED_GET,QSPI_ID,QSPI_READ,QSPI_ERASE,QSPI_WRITE next=8
+RESULT id=2 status=OK total=20 start=0 names=HELLO,CAPS,LED_SET,LED_GET,QSPI_ID,QSPI_READ,QSPI_ERASE,QSPI_WRITE next=8
 END id=2
 CMD id=3 command=CAPS start=8
-RESULT id=3 status=OK total=16 start=8 names=GPIO_CONFIG,LCD_INIT,LCD_CLOCK,LCD_TIMING,LCD_LAYER,LCD_SCAN,LCD_FILL,LCD_PIXEL
+RESULT id=3 status=OK total=20 start=8 names=GPIO_CONFIG,LCD_INIT,LCD_CLOCK,LCD_TIMING,LCD_LAYER,LCD_SCAN,LCD_FILL next=15
 END id=3
+CMD id=4 command=CAPS start=15
+RESULT id=4 status=OK total=20 start=15 names=LCD_PIXEL,LCD_CIRCLE,LCD_LINE,TOUCH_ID,TOUCH_READ
+END id=4
 ```
 
 ### 6.4 `LED_SET`
@@ -759,10 +768,10 @@ END id=9
 
 ### 6.12 LCD commands
 
-`LCD_INIT`, `LCD_CLOCK`, `LCD_TIMING`, `LCD_LAYER`, `LCD_SCAN`, `LCD_FILL`
-and `LCD_PIXEL` drive and check the 480 × 272 RK043FN48H panel of the board
-through the LTDC [N4] [I7] [I8]. The following rules apply to the seven
-commands.
+`LCD_INIT`, `LCD_CLOCK`, `LCD_TIMING`, `LCD_LAYER`, `LCD_SCAN`, `LCD_FILL`,
+`LCD_PIXEL`, `LCD_CIRCLE` (section 6.23) and `LCD_LINE` (section 6.24) drive
+and check the 480 × 272 RK043FN48H panel of the board through the LTDC [N4]
+[I7] [I8]. The following rules apply to the nine commands.
 
 | Item | Rule |
 |:--|:--|
@@ -997,10 +1006,134 @@ RESULT id=16 status=OK color=0xF800
 END id=16
 ```
 
-### 6.20 Future commands (informative)
+### 6.20 Touch commands
+
+`TOUCH_ID` and `TOUCH_READ` check the FT5336 capacitive touch controller of
+the panel [N7] [N8], on I2C3 (SCL on PH7, SDA on PH8), at the 7-bit address
+`0x38`, at 100 kHz [I7]. The following rules apply to the two commands.
+
+| Item | Rule |
+|:--|:--|
+| Prerequisite | None: the touch commands do not depend on `LCD_INIT` and never return `BUSY`. The first touch command of a session configures I2C3 [N4]. |
+| Start time | The reset of the FT5336 is the reset of the MCU (NRST), and the controller answers at least 200 ms after it [N7]. The firmware SHALL NOT address the controller before 300 ms after its own start. A touch command received earlier SHALL wait until then: its `RESULT` MAY come up to 300 ms after the start of the firmware, within the response timeout. |
+| Coordinates | Column `x` from 0 at the left, row `y` from 0 at the top of the 480 × 272 screen, in decimal without leading zeros, as reported by the controller, without scaling. The controller axes are swapped to screen axes (screen x is the controller Y register). |
+| Number of points | Bits 3:0 of the `TD_STATUS` register (`0x02`) [N8]. A value above 5 is not a touch: the firmware SHALL report `points=0`, as the controller driver of [N8] does. |
+| Errors | `DEVICE_TIMEOUT` if the controller does not answer: no acknowledge of its address or of a byte, or a wait beyond the firmware's internal time limit. `DEVICE_ERROR` on an I2C bus error or a lost arbitration. |
+
+> **Note (informative):** The touch commands cannot tell an intended touch
+> from an accidental one. A test that expects `points=0` requires that
+> nobody touches the screen while it runs. I2C3 also carries the audio
+> codec, which the firmware does not drive.
+
+### 6.21 `TOUCH_ID`
+
+`TOUCH_ID` reads the chip identifier register of the controller (`0xA8`)
+[N8].
+
+| Item | Specification |
+|:--|:--|
+| Arguments | None. |
+| Success result | `chip_id=0x<2 hexadecimal digits>` |
+| Error codes | `INVALID_ARGUMENT` if any argument is present. `DEVICE_TIMEOUT` and `DEVICE_ERROR` as defined in section 6.20. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | The first touch command of a session configures I2C3 (section 6.20). |
+
+Result fields:
+
+| Field | Value |
+|:--|:--|
+| `chip_id` | The identifier register, in uppercase hexadecimal. For the FT5336: `0x51`. The key is not `id`, a reserved key (section 5.2.1). |
+
+Example (informative):
+
+```text
+CMD id=17 command=TOUCH_ID
+RESULT id=17 status=OK chip_id=0x51
+END id=17
+```
+
+### 6.22 `TOUCH_READ`
+
+`TOUCH_READ` reads the number of points touched and the position of the
+first one, in one transfer from the registers `0x02` to `0x06` [N8].
+
+| Item | Specification |
+|:--|:--|
+| Arguments | None. |
+| Success result | `points=<n>`, then `x=<x> y=<y>` when `points` is 1 or more. |
+| Error codes | `INVALID_ARGUMENT` if any argument is present. `DEVICE_TIMEOUT` and `DEVICE_ERROR` as defined in section 6.20. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | The first touch command of a session configures I2C3 (section 6.20). |
+
+Result fields:
+
+| Field | Value |
+|:--|:--|
+| `points` | Number of points touched, from 0 to 5, in decimal. |
+| `x` | Column of the first point (section 6.20). Present only when `points` is 1 or more. |
+| `y` | Row of the first point (section 6.20). Present only when `points` is 1 or more. |
+
+Examples (informative), untouched, then touched near the top-left corner:
+
+```text
+CMD id=18 command=TOUCH_READ
+RESULT id=18 status=OK points=0
+END id=18
+CMD id=19 command=TOUCH_READ
+RESULT id=19 status=OK points=1 x=15 y=7
+END id=19
+```
+
+### 6.23 `LCD_CIRCLE`
+
+`LCD_CIRCLE` fills a disc of the framebuffer with one colour, for example a
+target for the operator to touch (section 6.22). It is an LCD command: the
+rules of section 6.12 apply.
+
+| Item | Specification |
+|:--|:--|
+| Arguments | `x` (required): column of the centre, unsigned decimal integer from 0 to 479. `y` (required): row of the centre, unsigned decimal integer from 0 to 271. `radius` (required): radius in pixels, unsigned decimal integer from 1 to 100. All three without leading zeros. `color` (required): RGB565 colour, as defined in section 6.12. |
+| Success result | No result field. |
+| Error codes | `BUSY` before `LCD_INIT` (section 6.12). `INVALID_ARGUMENT` if an argument is missing, malformed or out of range, or if any other argument is present; the framebuffer is then unchanged. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | Every pixel (px, py) of the framebuffer with (px − x)² + (py − y)² ≤ radius² takes the colour, which the panel shows from the next frame. The part of the disc outside the framebuffer is not drawn, and the other pixels are unchanged. |
+
+Example (informative), a black disc of radius 20 at the centre of the
+screen:
+
+```text
+CMD id=20 command=LCD_CIRCLE x=240 y=136 radius=20 color=0x0000
+RESULT id=20 status=OK
+END id=20
+```
+
+### 6.24 `LCD_LINE`
+
+`LCD_LINE` draws a stroke of discs from one point to another, the way a
+finger draws on the screen: one exchange draws a whole segment, where
+`LCD_CIRCLE` draws one disc. It is an LCD command: the rules of section 6.12
+apply.
+
+| Item | Specification |
+|:--|:--|
+| Arguments | `x0`, `y0` (required): start point. `x1`, `y1` (required): end point. Columns are unsigned decimal integers from 0 to 479, rows from 0 to 271. `radius` (required): radius of the discs in pixels, unsigned decimal integer from 1 to 20. All without leading zeros. `color` (required): RGB565 colour, as defined in section 6.12. |
+| Success result | No result field. |
+| Error codes | `BUSY` before `LCD_INIT` (section 6.12). `INVALID_ARGUMENT` if an argument is missing, malformed or out of range, or if any other argument is present; the framebuffer is then unchanged. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | The discs of section 6.23, of the given radius and colour, are drawn at these centres: (x0, y0); then, with dx = x1 − x0, dy = y1 − y0 and n = max(\|dx\|, \|dy\|) / 2 rounded down, (x0 + dx × i / n, y0 + dy × i / n) for i from 1 to n, each division rounded toward zero; then (x1, y1). Consecutive centres are at most 2 pixels apart on each axis: from a radius of 2 the stroke has no gap, while with a radius of 1 a slanted stroke is dotted. The part outside the framebuffer is not drawn, and the other pixels are unchanged. |
+
+Example (informative), a black stroke of radius 4 across the screen:
+
+```text
+CMD id=21 command=LCD_LINE x0=40 y0=136 x1=440 y1=136 radius=4 color=0x0000
+RESULT id=21 status=OK
+END id=21
+```
+
+### 6.25 Future commands (informative)
 
 The following example shows how a future peripheral command would use the
-same envelope. `SDRAM_TEST` is not part of protocol version 1.3 and SHALL
+same envelope. `SDRAM_TEST` is not part of protocol version 1.4 and SHALL
 NOT be implemented until it is specified according to section 6.1.
 
 ```text
@@ -1164,9 +1297,11 @@ a reference is dated, only the cited edition applies.
 | [N1] | IETF, *Key words for use in RFCs to Indicate Requirement Levels*, RFC 2119 (BCP 14), March 1997. <https://www.rfc-editor.org/rfc/rfc2119> | Meaning of SHALL, SHOULD, MAY (section 1.1). |
 | [N2] | IETF, *Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words*, RFC 8174 (BCP 14), May 2017. <https://www.rfc-editor.org/rfc/rfc8174> | Key words apply only in uppercase (section 1.1). |
 | [N3] | ANSI, *Coded Character Set – 7-Bit American Standard Code for Information Interchange*, ANSI X3.4-1986 (equivalent: ISO/IEC 646, International Reference Version). | Character set and byte values of records (section 2.2). |
-| [N4] | STMicroelectronics, *RM0385 Reference manual – STM32F75xxx and STM32F74xxx advanced Arm®-based 32-bit MCUs*, Rev. <x>. <https://www.st.com/resource/en/reference_manual/rm0385-stm32f75xxx-and-stm32f74xxx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf> | USART framing and error flags (FE, ORE) (section 2.4); reset flags of `RCC_CSR` and clearing with `RMVF` (banner `reset` field); GPIO input data register (sections 6.4 and 6.5); QUADSPI indirect mode (sections 6.6 to 6.10); GPIO mode, alternate function and input data registers (section 6.11); PLLSAI and LTDC clock (section 6.14); LTDC timing, layer, position and interrupt registers (sections 6.12 to 6.17). |
+| [N4] | STMicroelectronics, *RM0385 Reference manual – STM32F75xxx and STM32F74xxx advanced Arm®-based 32-bit MCUs*, Rev. <x>. <https://www.st.com/resource/en/reference_manual/rm0385-stm32f75xxx-and-stm32f74xxx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf> | USART framing and error flags (FE, ORE) (section 2.4); reset flags of `RCC_CSR` and clearing with `RMVF` (banner `reset` field); GPIO input data register (sections 6.4 and 6.5); QUADSPI indirect mode (sections 6.6 to 6.10); GPIO mode, alternate function and input data registers (section 6.11); PLLSAI and LTDC clock (section 6.14); LTDC timing, layer, position and interrupt registers (sections 6.12 to 6.17); I2C controller, I2C3 kernel clock (`I2C3SEL`) and HSI (`HSION`, `HSIRDY`) (section 6.20). |
 | [N5] | Micron, *N25Q128A 128Mb 3V multiple I/O serial flash memory* datasheet. <https://www.micron.com/products/storage/nor-flash/serial-nor> | Instructions, JEDEC identifier, 256-byte page, 4 KB erase block, and maximum erase and program times (sections 6.6 to 6.10). |
 | [N6] | STMicroelectronics, *STM32F750x8 datasheet*, alternate function mapping table. <https://www.st.com/resource/en/datasheet/stm32f750n8.pdf> | Expected alternate function of each LCD pin, checked with `GPIO_CONFIG` (section 6.11). |
+| [N7] | FocalTech, *FT5336GQQ capacitive touch panel controller* datasheet, version 0.6. | Time from reset to the first access, at least 200 ms (Table 3-5), and SCL frequency range (Table 2-2) (section 6.20). |
+| [N8] | STMicroelectronics, *stm32-ft5336* BSP component, commit `8edacf0` (the one used by STM32CubeF7). <https://github.com/STMicroelectronics/stm32-ft5336> | Registers of the FT5336: chip identifier `0xA8` = `0x51`, `TD_STATUS` `0x02` and first point `0x03` to `0x06` (sections 6.21 and 6.22); a `TD_STATUS` count above 5 read as no touch, in `ft5336_TS_DetectTouch` (section 6.20). The FocalTech datasheet has no register map. |
 
 ### 9.2 Informative references
 
@@ -1181,7 +1316,7 @@ required to implement this specification.
 | [I4] | JEDEC, *JEP106 – Standard Manufacturer's Identification Code*, latest revision. <https://www.jedec.org/standards-documents/docs/jep-106ab> | Manufacturer byte of the JEDEC identifier (section 6.7). |
 | [I5] | JEDEC, *JESD216 – Serial Flash Discoverable Parameters (SFDP)*, latest revision. <https://www.jedec.org/standards-documents/docs/jesd216b> | Identification of serial flash devices for future QSPI commands. |
 | [I6] | ISO/IEC/IEEE 29119-3, *Software and systems engineering – Software testing – Part 3: Test documentation*. | Structure of test reports (section 8.4). |
-| [I7] | STMicroelectronics, *STM32F7508-DK* product page and user manual. <https://www.st.com/en/evaluation-tools/stm32f7508-dk.html> | Board wiring of USART1 to the ST-LINK virtual COM port, of the user LED LD1 to PI1 (sections 6.4 and 6.5), and of the N25Q128A flash to the QUADSPI (section 6.6); wiring of the RK043FN48H panel to the LTDC, LCD_DISP on PI12 and LCD_BL_CTRL on PK3 (sections 6.12 and 6.13). |
+| [I7] | STMicroelectronics, *STM32F7508-DK* product page and user manual. <https://www.st.com/en/evaluation-tools/stm32f7508-dk.html> | Board wiring of USART1 to the ST-LINK virtual COM port, of the user LED LD1 to PI1 (sections 6.4 and 6.5), and of the N25Q128A flash to the QUADSPI (section 6.6); wiring of the RK043FN48H panel to the LTDC, LCD_DISP on PI12 and LCD_BL_CTRL on PK3 (sections 6.12 and 6.13); wiring of the touch controller from the MB1191 schematic: I2C3 on PH7 and PH8, address `0x38`, reset on NRST (section 6.20). |
 | [I8] | Rocktech, *RK043FN48H 4.3-inch TFT LCD module* datasheet. | Panel timings: synchronization widths, porches and pixel clock (sections 6.13 to 6.15). |
 
 ### 9.3 Related open-source projects (informative)
