@@ -1,34 +1,34 @@
 # SPDX-License-Identifier: MIT
 # ****************************
 # \file       tests/host/tui/scenarios/touch_check.yaml
-# \brief      Scenario: read the touch controller identity, then no touch, one finger and no touch again.
+# \brief      Scenario: read the touch controller identity, then no touch and one finger.
 #
 # \author     Z. BEN-AKKA
-# \version    1.0
-# \date       20/11/2026
+# \version    1.1
+# \date       23/11/2026
 #
 # \details
 #   Played by the TUI in the open session (README.md section 4.5, format in
 #   core/scenario.py). TOUCH_ID must give the FT5336 identifier, then
-#   TOUCH_READ must follow the operator: 0 points, 1 point, 0 points
-#   (tests/protocol.md sections 6.20 to 6.22). The position of the touched
-#   point is shown, not checked: the corner and accuracy tests of
-#   tests/host/hil/cases/test_touch.py check it. No LCD_INIT: the touch
-#   commands do not depend on the LCD (section 6.20).
+#   TOUCH_READ must give 0 points with nobody on the screen, and 1 point once
+#   the operator has put a finger on it (tests/protocol.md sections 6.20 to
+#   6.22). TOUCH_READ is sent once, right after the answer: the finger must
+#   still be there, so one hand stays on the screen and the other answers.
+#   The position of the touched point is shown, not checked: the corner and
+#   accuracy tests of tests/host/hil/cases/test_touch.py check it. No
+#   LCD_INIT: the touch commands do not depend on the LCD (section 6.20).
 #
 # \section tui_touch_check_yaml_version_history Version history
 # | Version | Date       | Author      | Description      |
 # |:-------:|:----------:|:------------|:-----------------|
 # | 1.0     | 20/11/2026 | Z. BEN-AKKA | Initial version. |
+# | 1.1     | 23/11/2026 | Z. BEN-AKKA | One prompt instead of three; keep the finger on the screen while answering. |
 # ****************************
 
 name: Touch check
-description: Read the touch controller identity, then no touch, one finger, and no touch again.
+description: Read the touch controller identity, then no touch and one finger.
 steps:
   - {command: TOUCH_ID, expect: {chip_id: "0x51"}}
-  - {prompt: "Hands off the screen. Ready?"}
   - {command: TOUCH_READ, expect: {points: "0"}}
-  - {prompt: "Put one finger on the screen and keep it there. Ready?"}
+  - {prompt: "Put one finger on the screen, keep it there and press Yes with the other hand."}
   - {command: TOUCH_READ, expect: {points: "1"}}
-  - {prompt: "Lift your finger. Ready?"}
-  - {command: TOUCH_READ, expect: {points: "0"}}
