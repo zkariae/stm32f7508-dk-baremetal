@@ -5,8 +5,8 @@
 \brief      Commands and keys of the HIL bench TUI, and its pytest event stream.
 
 \author     Z. BEN-AKKA
-\version    1.7
-\date       17/11/2026
+\version    1.8
+\date       23/11/2026
 
 \section tui_hil_tui_md_version_history Version history
 | Version | Date       | Author      | Description      |
@@ -19,6 +19,7 @@
 | 1.5     | 11/11/2026 | Z. BEN-AKKA | Add the Export key and the report of a run. |
 | 1.6     | 13/11/2026 | Z. BEN-AKKA | Add the dialog look, the command palette and the progress box. |
 | 1.7     | 17/11/2026 | Z. BEN-AKKA | Add Disconnect to the keys under the Connection box. |
+| 1.8     | 23/11/2026 | Z. BEN-AKKA | Add the Options window and the operator tests. |
 ****************************
 -->
 
@@ -58,6 +59,7 @@ catalogue is invalid. Install Textual with
 | Space in the test tree | Marks or unmarks a test, a file or a family |
 | Enter in the test tree | Opens or closes a node |
 | Escape in a confirmation | Answers No |
+| Escape in the Options window | Cancels; Enter in a field is OK |
 | Escape or Enter in a progress box | Closes a box that does not close by itself |
 
 The VS Code terminal keeps F5, F6 and ctrl+q: use the ctrl keys there.
@@ -109,9 +111,36 @@ Refresh. A run covers one family; "Will run" shows what Run starts.
 | End of a pytest run | The TUI connects again |
 | End of T1-T8, or a Stop forced during a flash | `UNKNOWN_IMAGE`; the TUI offers to flash hil-bench, then connects |
 | Scenario prompt | Yes or No; a No fails the step, the next steps still run |
+| Instruction to the operator | In bold on the progress line, after `>>>`, until its test ends |
 
 Each run has its own folder `work/hil-results/<date-time>-<suite>/` with
 `events.jsonl`, `run.json` and, for pytest, `junit.xml` and `pytest.log`.
+
+### Options and operator tests
+
+The Options button opens the options of the pytest runs, listed in
+`tests/host/config/run_options.yaml`. They stay until the TUI closes; the
+line "Options" shows what the next pytest run gets, `none` when all have
+their default value. T1–T8 and the scenarios get none.
+
+| Option | Variable | Values |
+|:--|:--|:--|
+| Operator at the board | `HIL_OPERATOR` | Ticked: the operator tests run; they are skipped otherwise |
+| Drawing colour | `HIL_DRAW_COLOR` | A colour of `colors.yaml`, or its French name or `0x…` typed in the field beside it; black by default |
+| Target seed | `HIL_TOUCH_SEED` | The seed of an earlier run, to get the same targets; empty for new ones |
+
+To play the touch operator tests (`cases/test_touch.py`):
+
+| Step | Action |
+|:-:|:--|
+| 1 | Options: tick "Operator at the board", choose the colour, OK |
+| 2 | Mark `test_touch_draw`, `test_touch_accuracy` or `test_touch_corner`, then Run |
+| 3 | Wait for the flash, then follow the instruction after `>>>` on the progress line |
+| 4 | Read the results in the list: one line per test, and one per instruction |
+
+With the operator option, a run of the whole suite waits for the operator too:
+clear it before leaving the board. A TUI started with a variable set, such as
+`HIL_OPERATOR=1 python3 tests/host/tui/hil_tui.py`, opens with that option.
 
 ## Report
 
@@ -120,7 +149,7 @@ Export is grey until a run ends. It is then active whatever the verdict,
 writes `report.md` and `report.html` in the folder of the last run; the
 progress box shows the steps and the message line gives their path. The report holds the verdict, the totals, one
 line per test with its outcome (`tests/protocol.md` section 7.3), the banner,
-the Git commit, the timeouts that differ from section 8.1 and, for each
+the Git commit, the run options, the timeouts that differ from section 8.1 and, for each
 failure, the last request and the records received for it.
 
 After a run killed with the TUI, rebuild the report from `events.jsonl`:
