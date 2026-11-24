@@ -5,8 +5,8 @@
 # \brief      Build, flash and document project images for a board.
 #
 # \author     Z. BEN-AKKA
-# \version    1.16
-# \date       19/11/2026
+# \version    1.17
+# \date       24/11/2026
 #
 # \details
 #   Says what to build: the applications, their sources, modules and
@@ -25,7 +25,8 @@
 #   its readiness banner.
 #   07-lcd-logo-xip pairs the 08 bootloader with 07-lcd-logo run in place
 #   from QSPI. 10-touch-paint pairs the 08 bootloader with the paint
-#   application run in place from QSPI.
+#   application run in place from QSPI. 11-text-console pairs the 08
+#   bootloader with the text console run in place from QSPI.
 #     make 01-blink            build one application
 #     make 01-blink-flash      build and flash it with the ST-LINK
 #     make BOARD=<name> ...    build for another board folder
@@ -51,6 +52,7 @@
 # | 1.14    | 29/10/2026 | Z. BEN-AKKA | Link the LCD commands and the fb and LTDC modules into hil-bench. |
 # | 1.15    | 19/11/2026 | Z. BEN-AKKA | Add 10-touch-paint: the paint app run in place from QSPI.   |
 # | 1.16    | 19/11/2026 | Z. BEN-AKKA | Link the touch commands and the I2C and touch modules into hil-bench. |
+# | 1.17    | 24/11/2026 | Z. BEN-AKKA | Add 11-text-console: the text console run in place from QSPI. |
 # ****************************
 # */
 
@@ -149,7 +151,15 @@ BOOT_MODULES := boot delay gpio led qspi uart
 10-touch-paint-app_MODULES  := delay fb gpio i2c ltdc rcc touch uart
 10-touch-paint-app_MEMORY   := qspi
 
-MULTI  := 08-custombootloader 09-securebootloader 07-lcd-logo-xip 10-touch-paint
+# 11: the text console, run in place from QSPI behind the 08 bootloader
+11-text-console_IMAGES       := 11-text-console-app 11-text-console-boot
+11-text-console-boot_SRCS    := $(APPS_DIR)/08-custombootloader/main.c
+11-text-console-boot_MODULES := $(BOOT_MODULES)
+11-text-console-app_SRCS     := $(APPS_DIR)/11-text-console/main.c
+11-text-console-app_MODULES  := delay fb gpio ltdc rcc uart
+11-text-console-app_MEMORY   := qspi
+
+MULTI  := 08-custombootloader 09-securebootloader 07-lcd-logo-xip 10-touch-paint 11-text-console
 APPS   := $(SINGLE) $(MULTI) hil-bench uart-diag
 IMAGES := $(foreach a,$(APPS),$($(a)_IMAGES))
 
@@ -333,7 +343,7 @@ help:
 	@echo "  <app>-dfu            build and flash the internal-flash image over USB DFU"
 	@echo "  <app>-clean          remove its build outputs"
 	@echo ""
-	@echo "Per image (an application, or 08/09/07-lcd-logo-xip/10-touch-paint's <app>-boot and <app>-app):"
+	@echo "Per image (an application, or 08/09/07-lcd-logo-xip/10-touch-paint/11-text-console's <app>-boot and <app>-app):"
 	@echo "  <image>-size         flash and RAM usage"
 	@echo "  <image>-disasm       disassembly"
 	@echo "  <image>-sections     section addresses"
