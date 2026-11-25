@@ -4,25 +4,27 @@ No board. The tests check that the catalogue and hil_protocol.h hold the same
 command names, in both directions (C1), that the catalogue merges with the
 CAPS list, that destructive commands are marked, and that the form checks
 follow tests/protocol.md section 6. Broken catalogues written in tmp_path
-check that the loader names the faulty field.
+check that the loader names the faulty field. The text type has its own
+catalogue in tmp_path: typed in ASCII, sent in hexadecimal, spaces kept.
 
 Not tested here: the checks between arguments (QSPI_READ addr + len,
 QSPI_WRITE page), which stay with the firmware, and sending the commands to
 the board (tests/test_catalog_board.py).
 
-Version: 1.2
-Date: 20/11/2026
+Version: 1.3
+Date: 25/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  09/11/2026  Initial version.
   1.1  20/11/2026  LCD_CIRCLE also requires LCD_INIT (protocol 1.4).
   1.2  20/11/2026  LCD_LINE also requires LCD_INIT (protocol 1.4).
+  1.3  25/11/2026  Add the text type tests.
 """
 
 import pytest
 
 from cases.expected import COMMANDS
-from core.catalog import ArgumentError, CatalogError, EntryStatus, default_text, firmware_names, load
+from core.catalog import ArgumentError, CatalogError, EntryStatus, default_text, firmware_names, load, wire_text
 
 CATALOGUE = load()
 
@@ -214,8 +216,12 @@ def test_load_rejects(tmp_path, old, new, field):
     ("{type: color, default: 0x10000}", "CMD.n.default"),
     ("{type: color, default: \"0xF800\"}", "CMD.n.default"),
     ("{type: int, min: 0, max: 9, required: maybe}", "CMD.n.required"),
+    ("{type: text, bytes: [0, 20]}", "CMD.n.bytes"),
+    ("{type: text, bytes: [1, 4], default: \"Hello\"}", "CMD.n.default"),
+    ("{type: text, bytes: [1, 20], default: 5}", "CMD.n.default"),
 ], ids=["default_out_of_range", "min_above_max", "max_beyond_digits", "zero_step", "zero_bytes",
-        "letters_reversed", "color_too_big", "default_as_text", "required_not_boolean"])
+        "letters_reversed", "color_too_big", "default_as_text", "required_not_boolean", "text_zero_bytes",
+        "text_default_too_long", "text_default_as_number"])
 def test_load_rejects_argument(tmp_path, arg, field):
     entry = f'  CMD:\n    group: G\n    summary: s\n    spec: "6.1"\n    args:\n      n: {arg}\n'
     with pytest.raises(CatalogError, match=f"^{field}"):
@@ -230,3 +236,54 @@ def test_load_rejects_schema_version(tmp_path):
 def test_load_rejects_missing_file(tmp_path):
     with pytest.raises(CatalogError, match="commands.yaml"):
         load(tmp_path / "commands.yaml")
+
+
+# Text type: typed in ASCII, sent in hexadecimal
+
+TEXT_ENTRY = """\
+  CMD:
+    group: G
+    summary: s
+    spec: "6.1"
+    args:
+      n: {type: text, bytes: [1, 20], default: "Hello"}
+"""
+
+
+@pytest.fixture
+def text_catalogue(tmp_path):
+    return load(write_catalogue(tmp_path, TEXT_ENTRY))
+
+
+@pytest.mark.parametrize("typed, sent", [
+    ("Hello", "48656C6C6F"),
+    ("a b=c", "6120623D63"),
+    (" x ", "207820"),
+    ("   ", "202020"),
+    ("~", "7E"),
+    ("A" * 20, "41" * 20),
+], ids=["word", "space_and_equal", "outer_spaces", "spaces_only", "last_character", "longest"])
+def test_text_is_sent_in_hexadecimal(text_catalogue, typed, sent):
+    assert text_catalogue.check("CMD", {"n": typed}) == {"n": sent}
+
+
+@pytest.mark.parametrize("typed, message", [
+    ("", "required"),
+    ("A" * 21, "1 to 20 characters"),
+    ("é", "printable ASCII characters only"),
+    ("a\tb", "printable ASCII characters only"),
+    ("\x7f", "printable ASCII characters only"),
+], ids=["empty", "too_long", "accent", "tab", "delete"])
+def test_text_rejects(text_catalogue, typed, message):
+    with pytest.raises(ArgumentError) as error:
+        text_catalogue.check("CMD", {"n": typed})
+    assert (error.value.arg, error.value.message) == ("n", message)
+
+
+def test_wire_text(text_catalogue):
+    # The free form: nothing is checked, and only the text type is converted
+    arg = text_catalogue.commands["CMD"].args[0]
+    assert default_text(arg) == "Hello"
+    assert wire_text(arg, "é") == "C3A9"
+    assert wire_text(arg, "a" * 22) == "61" * 22
+    assert wire_text(CATALOGUE.commands["LCD_SCAN"].args[0], "500") == "500"
