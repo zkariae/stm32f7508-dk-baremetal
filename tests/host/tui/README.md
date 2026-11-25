@@ -5,8 +5,8 @@
 \brief      HIL bench TUI: frozen criteria, architecture and phase E plan.
 
 \author     Z. BEN-AKKA
-\version    1.2
-\date       23/11/2026
+\version    1.3
+\date       25/11/2026
 
 \details
   Reference document of the terminal interface that drives the HIL bench
@@ -21,6 +21,7 @@
 | 1.0     | 09/11/2026 | Z. BEN-AKKA | Initial version. |
 | 1.1     | 17/11/2026 | Z. BEN-AKKA | Add the proof of each criterion, the run folder files, the minicom limit and the CI board skip. |
 | 1.2     | 23/11/2026 | Z. BEN-AKKA | Add the run options and the operator instructions. |
+| 1.3     | 25/11/2026 | Z. BEN-AKKA | Add the text argument type. |
 ****************************
 -->
 
@@ -138,9 +139,13 @@ QSPI_ERASE:
            min: 0x00FF0000, max: 0x00FFF000, default: 0x00FF0000}
 ```
 
-Argument types: `enum`, `int`, `hex`, `hexdata`, `letter`, `color`. The field
-`requires: LCD_INIT` shows a warning and does not forbid sending. The free
+Argument types: `enum`, `int`, `hex`, `hexdata`, `text`, `letter`, `color`. The
+field `requires: LCD_INIT` shows a warning and does not forbid sending. The free
 form can also send a deliberately invalid value.
+
+A `text` argument is typed in ASCII and sent in hexadecimal, two digits per
+character. Its spaces are kept, and `bytes: [min, max]` limits its length. The
+free form shows the hexadecimal, and a scenario holds the ASCII text.
 
 ### 4.3 Runs
 
