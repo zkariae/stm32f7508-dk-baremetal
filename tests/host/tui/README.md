@@ -5,8 +5,8 @@
 \brief      HIL bench TUI: frozen criteria, architecture and phase E plan.
 
 \author     Z. BEN-AKKA
-\version    1.1
-\date       17/11/2026
+\version    1.2
+\date       23/11/2026
 
 \details
   Reference document of the terminal interface that drives the HIL bench
@@ -20,6 +20,7 @@
 |:-------:|:----------:|:------------|:-----------------|
 | 1.0     | 09/11/2026 | Z. BEN-AKKA | Initial version. |
 | 1.1     | 17/11/2026 | Z. BEN-AKKA | Add the proof of each criterion, the run folder files, the minicom limit and the CI board skip. |
+| 1.2     | 23/11/2026 | Z. BEN-AKKA | Add the run options and the operator instructions. |
 ****************************
 -->
 
@@ -77,6 +78,7 @@ of the developer.
 
 ```text
 tests/host/config/commands.yaml    Command catalogue (data)
+tests/host/config/run_options.yaml Run options (data)
 tests/host/tui/
 ├── README.md                      This document
 ├── pyproject.toml                 Textual version, pytest settings
@@ -87,6 +89,7 @@ tests/host/tui/
 │   ├── suites.py                  Discovery of pytest, T1–T8 and scenarios
 │   ├── runner.py                  Subprocess, event stream, stop, verdict
 │   ├── scenario.py                Scenario execution
+│   ├── run_options.py             Run options: values checked, environment of a run
 │   └── report.py                  Markdown and HTML reports
 ├── plugins/hil_events.py          pytest plugin (-p), writes events.jsonl
 ├── scenarios/*.yaml               One file per scenario
@@ -143,7 +146,8 @@ form can also send a deliberately invalid value.
 
 Each run has its own folder, `work/hil-results/<date-time>-<suite>/`, with
 `events.jsonl`, `junit.xml`, `pytest.log`, a copy of `bench.yaml` and
-`run.json` (selection, commit, verdict and totals, written atomically).
+`run.json` (selection, commit, run options, verdict and totals, written
+atomically).
 Export adds `report.md` and `report.html`.
 
 - The plugin is loaded with `-p hil_events`, alongside `--log-file` and
@@ -153,11 +157,23 @@ Export adds `report.md` and `report.html`.
   Otherwise it is FAIL, BENCH ERROR or `INTERRUPTED`.
 - Stop sends SIGINT to the process group, after the end of a flash.
 
+A pytest run can have options: environment variables that its tests read.
+`tests/host/config/run_options.yaml` lists them, and the Options window is
+built from it, so the TUI code names none of them.
+
+- A value equal to its default is not sent. The variable is also removed from
+  the environment of the run, so a run uses what the Tests tab shows.
+- The values start from the environment of the TUI and stay from one run to
+  the next until it closes. T1–T8 and the scenarios get none.
+- `run.json` and the report give the variables sent.
+- A test gives its instructions to the operator on the logger `hil.operator`:
+  the Tests tab shows them in bold on the progress line until the test ends.
+
 ### 4.4 Report
 
 The report gives the verdict, the totals, one line per test with its outcome
 from `tests/protocol.md` section 7.3, the banner, the Git commit and the
-`bench.yaml` used. It adds any overridden timeout (section 8.1) and, for each
+`bench.yaml` used, and the run options. It adds any overridden timeout (section 8.1) and, for each
 failure, the last request and its records (section 8.4).
 
 ### 4.5 Scenarios

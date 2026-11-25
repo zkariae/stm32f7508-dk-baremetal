@@ -2,15 +2,16 @@
 /*!
 ****************************
 \file       hil_bench/commands.c
-\brief      Command table of the HIL protocol firmware: HELLO, CAPS, LED, QSPI, GPIO and LCD commands.
+\brief      Command table of the HIL protocol firmware: HELLO, CAPS, LED, QSPI, GPIO, LCD and touch commands.
 
 \author     Z. BEN-AKKA
-\version    1.3
-\date       29/10/2026
+\version    1.6
+\date       20/11/2026
 
 \details
   Implements protocol.md sections 6.2 to 6.10; GPIO_CONFIG and the LCD
-  commands (sections 6.11 to 6.19) are in lcd_commands.c.
+  commands (sections 6.11 to 6.19, 6.23 and 6.24) are in lcd_commands.c, TOUCH_ID and
+  TOUCH_READ (sections 6.20 to 6.22) in touch_commands.c.
   - HELLO takes no argument and returns name, proto, fw and build, the
     values of the readiness banner.
   - CAPS returns the table names from start (default 0), as many as fit in
@@ -32,6 +33,9 @@
 | 1.1     | 27/10/2026 | Z. BEN-AKKA | Add LED_SET and LED_GET. |
 | 1.2     | 28/10/2026 | Z. BEN-AKKA | Add QSPI_ID, QSPI_READ, QSPI_ERASE and QSPI_WRITE. |
 | 1.3     | 29/10/2026 | Z. BEN-AKKA | Add the GPIO_CONFIG and LCD commands; FindArg shared as CommandFindArg. |
+| 1.4     | 20/11/2026 | Z. BEN-AKKA | Add TOUCH_ID and TOUCH_READ. |
+| 1.5     | 20/11/2026 | Z. BEN-AKKA | Add LCD_CIRCLE after LCD_PIXEL. |
+| 1.6     | 20/11/2026 | Z. BEN-AKKA | Add LCD_LINE after LCD_CIRCLE. |
 ****************************
 */
 
@@ -44,6 +48,7 @@
 #include "hil_protocol.h"
 #include "lcd_commands.h"
 #include "qspi/qspi.h"
+#include "touch_commands.h"
 
 #define CAPS_NAMES_PREFIX_LEN 7u ///< " names=" before the names.
 #define CAPS_NEXT_FIELD_MAX   9u ///< " next=255": total is 255 at most.
@@ -76,6 +81,10 @@ static const Command commands[] = {
   {HIL_CMD_LCD_SCAN, LcdScanCmd},
   {HIL_CMD_LCD_FILL, LcdFillCmd},
   {HIL_CMD_LCD_PIXEL, LcdPixelCmd},
+  {HIL_CMD_LCD_CIRCLE, LcdCircleCmd},
+  {HIL_CMD_LCD_LINE, LcdLineCmd},
+  {HIL_CMD_TOUCH_ID, TouchIdCmd},
+  {HIL_CMD_TOUCH_READ, TouchReadCmd},
 };
 
 #define COMMAND_COUNT ((uint32_t)(sizeof commands / sizeof commands[0]))

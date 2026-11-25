@@ -12,7 +12,8 @@ files. The runs go to tmp_path, never to work/hil-results.
     junit.xml of the installed pytest and the pytest summary (C3), each
     teardown error case in its own run; Stop during a test,
     during a fake flash (deferred) and twice during it (forced), with the
-    process group checked gone (C2); T1-T8 with fake scripts; scenario runs.
+    process group checked gone (C2); T1-T8 with fake scripts; scenario runs;
+    the run options reach the pytest process, run.json and the report.
   - core/scenario.py: the step outcomes, the exit codes and the refused files.
   - core/suites.py: the UART RX plan, the collection of tests/host/hil (no
     total written here, C5) and a broken collection kept in its family.
@@ -21,12 +22,13 @@ Not tested here: the board, the real flash, make and the real
 uart_rx_check.py (checked by hand on the board in E20), and the display
 (tests_pane.py).
 
-Version: 1.1
-Date: 11/11/2026
+Version: 1.2
+Date: 23/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  10/11/2026  Initial version.
   1.1  11/11/2026  Test Totals by the junit.xml rule of pytest before and from 9.1, and each teardown error case.
+  1.2  23/11/2026  Test the run options: environment of the run, run.json and report line.
 """
 
 import json
@@ -44,6 +46,7 @@ import pytest
 
 from adapters.outcomes import UnexpectedReset
 from adapters.serial_adapter import Response
+from core import report as reports
 from core.catalog import load as load_catalog
 from core.runner import PLUGINS_DIR, REPO, Run, Totals, junit_counts_teardown_once
 from core.scenario import ScenarioError, load, load_all, run as play_scenario
@@ -179,6 +182,22 @@ def test_one():
 
 def test_two():
     log.info("RX  RESULT id=1 status=OK")
+'''
+
+OPTIONS = '''\
+import os
+
+
+def test_set():
+    assert os.environ["FAKE_COLOUR"] == "red"
+
+
+def test_removed():
+    assert "FAKE_OPERATOR" not in os.environ
+
+
+def test_kept():
+    assert os.environ["FAKE_OTHER"] == "as before"
 '''
 
 LONG = '''\
@@ -495,6 +514,29 @@ def test_runner_pytest_all_passed(tmp_path):
     assert run.totals.counts() == junit_counts(run.folder) == {"tests": 2, "passed": 2, "failed": 0, "errors": 0,
                                                                 "skipped": 0}
     assert run.folder.name.endswith("-pytest")
+
+
+def test_runner_options_reach_pytest(tmp_path, monkeypatch):
+    """A text is set, None removes a variable of the TUI, the others stay; run.json and the report keep them."""
+    for name, value in (("FAKE_COLOUR", "black"), ("FAKE_OPERATOR", "1"), ("FAKE_OTHER", "as before")):
+        monkeypatch.setenv(name, value)
+    run = make_run(tmp_path, "pytest", tests=suite_of(tmp_path, "options", OPTIONS), everything=True,
+                   env={"FAKE_COLOUR": "red", "FAKE_OPERATOR": None})
+    run.start()
+    finish(run)
+    assert (run.verdict, run.totals.passed) == ("PASS", 3)
+    assert json.loads((run.folder / "run.json").read_text(encoding="utf-8"))["env"] == {"FAKE_COLOUR": "red"}
+    built = reports.build(run.folder)
+    assert "| Run options | FAKE_COLOUR=red |" in reports.to_markdown(built)
+    assert "FAKE_COLOUR=red" in reports.to_html(built)
+
+
+def test_runner_without_options(tmp_path):
+    run = make_run(tmp_path, "pytest", tests=suite_of(tmp_path, "passing", PASSING), everything=True)
+    run.start()
+    finish(run)
+    assert json.loads((run.folder / "run.json").read_text(encoding="utf-8"))["env"] == {}
+    assert "| Run options | none |" in reports.to_markdown(reports.build(run.folder))
 
 
 def test_runner_pytest_nothing_collected(tmp_path):
