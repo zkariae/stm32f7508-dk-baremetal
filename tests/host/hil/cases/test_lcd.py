@@ -1,31 +1,40 @@
-"""GPIO_CONFIG and LCD commands: protocol.md sections 6.11 to 6.19.
+"""GPIO_CONFIG and LCD commands: protocol.md sections 6.11 to 6.19, 6.23 and 6.24.
 
-Each test starts after the eight commands were found in the CAPS list
+Each test starts after the ten commands were found in the CAPS list
 (section 3.4); the lcd fixture also sends LCD_INIT. The BUSY tests start from
 a reset, since LCD_INIT may have succeeded earlier in the session (section
 6.12). The expected values come from cases/expected.py: the pin table of the
-datasheet, the panel timings and the framebuffer address. A rejected LCD_FILL
-must leave the framebuffer unchanged (section 7.1). The tests check the
+datasheet, the panel timings, the framebuffer address and the LCD_CIRCLE
+and LCD_LINE radius limits. A rejected LCD_FILL, LCD_CIRCLE or LCD_LINE must
+leave the framebuffer unchanged (section 7.1). LCD_CIRCLE is checked with
+LCD_PIXEL on and around the edge of the disc, and clipped at two corners;
+LCD_LINE on and beside a horizontal stroke, along a diagonal one (no gap),
+and with both ends equal (one disc). The tests check the
 registers, the scan and the framebuffer memory, not the light of the panel
 (section 6.12, note). DEVICE_ERROR needs a failed HSE and DEVICE_TIMEOUT a
 PLLSAI that does not lock: neither is tested here.
 
-Version: 1.0
-Date: 03/11/2026
+Version: 1.2
+Date: 20/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  03/11/2026  Initial version.
+  1.1  20/11/2026  Add the LCD_CIRCLE tests (protocol 1.4).
+  1.2  20/11/2026  Add the LCD_LINE tests (protocol 1.4).
 """
 
 import pytest
 
-from cases.expected import (LCD_FB_ADDR, LCD_HEIGHT, LCD_PINS, LCD_PIXEL_HZ, LCD_POWER_PINS, LCD_TIMING,
-                            LCD_WIDTH)
+from cases.expected import (LCD_FB_ADDR, LCD_HEIGHT, LCD_LINE_RADIUS_MAX, LCD_PINS, LCD_PIXEL_HZ, LCD_POWER_PINS,
+                            LCD_RADIUS_MAX, LCD_RADIUS_MIN, LCD_TIMING, LCD_WIDTH)
 
 pytestmark = pytest.mark.lcd
 
 LCD_COMMANDS = ("GPIO_CONFIG", "LCD_INIT", "LCD_CLOCK", "LCD_TIMING", "LCD_LAYER", "LCD_SCAN", "LCD_FILL",
-                "LCD_PIXEL")
+                "LCD_PIXEL", "LCD_CIRCLE", "LCD_LINE")
+CIRCLE = {"x": LCD_WIDTH // 2, "y": LCD_HEIGHT // 2, "radius": 20, "color": "0x0000"}  # A valid LCD_CIRCLE
+LINE = {"x0": 40, "y0": LCD_HEIGHT // 2, "x1": 440, "y1": LCD_HEIGHT // 2, "radius": 4,
+        "color": "0x0000"}  # A valid LCD_LINE across the middle row
 CORNERS = [(0, 0), (LCD_WIDTH - 1, 0), (0, LCD_HEIGHT - 1), (LCD_WIDTH - 1, LCD_HEIGHT - 1),
            (LCD_WIDTH // 2, LCD_HEIGHT // 2)]  # Four corners and the centre
 
@@ -71,6 +80,8 @@ def lcd(fresh_board):
     ("LCD_SCAN", {"ms": 100}),
     ("LCD_FILL", {"color": "0xF800"}),
     ("LCD_PIXEL", {"x": 0, "y": 0}),
+    ("LCD_CIRCLE", CIRCLE),
+    ("LCD_LINE", LINE),
 ])
 def test_lcd_busy_before_init(lcd_reset, command, args):
     response = lcd_reset.request(command, **args)
@@ -221,3 +232,92 @@ def test_lcd_fill_invalid(lcd, args):
 ], ids=["missing_x", "missing_y", "x_too_big", "y_too_big", "leading_zero", "extra_argument"])
 def test_lcd_pixel_invalid(lcd, args):
     assert_rejected(lcd.request("LCD_PIXEL", **args))
+
+
+def test_lcd_circle(lcd):
+    """Pixels with dx² + dy² ≤ radius² take the colour, the others keep theirs (section 6.23)."""
+    fill(lcd, 0xFFFF)
+    assert lcd.request("LCD_CIRCLE", **CIRCLE).ok
+    cx, cy, r = CIRCLE["x"], CIRCLE["y"], CIRCLE["radius"]
+    inside = [(cx, cy), (cx + r, cy), (cx, cy - r), (cx + 14, cy + 14)]   # 14² + 14² = 392 ≤ 400
+    outside = [(cx + r + 1, cy), (cx, cy + r + 1), (cx + 15, cy - 15)]  # 15² + 15² = 450 > 400
+    for x, y in inside:
+        assert pixel(lcd, x, y) == "0x0000", f"({x}, {y}) inside the disc"
+    for x, y in outside:
+        assert pixel(lcd, x, y) == "0xFFFF", f"({x}, {y}) outside the disc"
+
+
+def test_lcd_circle_clipped(lcd):
+    """A disc across the edges is drawn on the screen part only (section 6.23)."""
+    fill(lcd, 0xFFFF)
+    for x, y in [(0, 0), (LCD_WIDTH - 1, LCD_HEIGHT - 1)]:
+        assert lcd.request("LCD_CIRCLE", x=x, y=y, radius=LCD_RADIUS_MAX, color="0xF800").ok
+        assert pixel(lcd, x, y) == "0xF800"
+    assert pixel(lcd, LCD_WIDTH // 2, LCD_HEIGHT // 2) == "0xFFFF"
+
+
+@pytest.mark.parametrize("change", [
+    {"radius": None},
+    {"color": None},
+    {"radius": LCD_RADIUS_MIN - 1},
+    {"radius": LCD_RADIUS_MAX + 1},
+    {"radius": "020"},
+    {"x": LCD_WIDTH},
+    {"y": LCD_HEIGHT},
+    {"color": "0x10000"},
+    {"z": 1},
+], ids=["missing_radius", "missing_color", "radius_zero", "radius_too_big", "leading_zero", "x_too_big",
+        "y_too_big", "color_too_big", "extra_argument"])
+def test_lcd_circle_invalid(lcd, change):
+    fill(lcd, 0x07E0)
+    args = {key: value for key, value in {**CIRCLE, **change}.items() if value is not None}
+    assert_rejected(lcd.request("LCD_CIRCLE", **args))
+    assert pixel(lcd, CIRCLE["x"], CIRCLE["y"]) == "0x07E0"  # Not executed: framebuffer unchanged
+
+
+def test_lcd_line(lcd):
+    """Discs of the radius along the stroke, nothing beside it or past its ends (section 6.24)."""
+    fill(lcd, 0xFFFF)
+    assert lcd.request("LCD_LINE", **LINE).ok
+    x0, x1, y, r = LINE["x0"], LINE["x1"], LINE["y0"], LINE["radius"]
+    on = [(x0, y), ((x0 + x1) // 2, y), (x1, y), (x0 + 100, y + r), (x1 - 78, y - r)]  # Centres every 2 px
+    beside = [((x0 + x1) // 2, y + r + 1), ((x0 + x1) // 2, y - r - 1), (x0 - r - 1, y), (x1 + r + 1, y)]
+    for x, yy in on:
+        assert pixel(lcd, x, yy) == "0x0000", f"({x}, {yy}) on the stroke"
+    for x, yy in beside:
+        assert pixel(lcd, x, yy) == "0xFFFF", f"({x}, {yy}) beside the stroke"
+
+
+def test_lcd_line_diagonal_no_gap(lcd):
+    """Every pixel of the ideal diagonal is drawn from a radius of 2 (section 6.24)."""
+    fill(lcd, 0xFFFF)
+    assert lcd.request("LCD_LINE", x0=100, y0=30, x1=300, y1=230, radius=2, color="0x0000").ok
+    for k in range(0, 201, 7):  # Odd and even k: between two centres too
+        assert pixel(lcd, 100 + k, 30 + k) == "0x0000", f"gap at ({100 + k}, {30 + k})"
+
+
+def test_lcd_line_single_point(lcd):
+    """Both ends equal: one disc, as LCD_CIRCLE (section 6.24)."""
+    fill(lcd, 0xFFFF)
+    cx, cy = CIRCLE["x"], CIRCLE["y"]
+    assert lcd.request("LCD_LINE", x0=cx, y0=cy, x1=cx, y1=cy, radius=LCD_LINE_RADIUS_MAX, color="0x0000").ok
+    assert pixel(lcd, cx + LCD_LINE_RADIUS_MAX, cy) == "0x0000"
+    assert pixel(lcd, cx + LCD_LINE_RADIUS_MAX + 1, cy) == "0xFFFF"
+
+
+@pytest.mark.parametrize("change", [
+    {"x1": None},
+    {"radius": LCD_RADIUS_MIN - 1},
+    {"radius": LCD_LINE_RADIUS_MAX + 1},
+    {"x0": "040"},
+    {"x1": LCD_WIDTH},
+    {"y0": LCD_HEIGHT},
+    {"color": "0x10000"},
+    {"z": 1},
+], ids=["missing_x1", "radius_zero", "radius_too_big", "leading_zero", "x1_too_big", "y0_too_big",
+        "color_too_big", "extra_argument"])
+def test_lcd_line_invalid(lcd, change):
+    fill(lcd, 0x07E0)
+    args = {key: value for key, value in {**LINE, **change}.items() if value is not None}
+    assert_rejected(lcd.request("LCD_LINE", **args))
+    assert pixel(lcd, LINE["x0"], LINE["y0"]) == "0x07E0"  # Not executed: framebuffer unchanged

@@ -2,8 +2,12 @@
 
 Each run gets its own folder, work/hil-results/<YYYYMMDD-HHMMSS>-<suite>/
 (README.md section 4.3): events.jsonl, run.json (kind, selection, commands,
-Git commit, copy of bench.yaml, then verdict, totals and exit status), and
-for pytest junit.xml and pytest.log.
+Git commit, copy of bench.yaml, run options, then verdict, totals and exit
+status), and for pytest junit.xml and pytest.log.
+
+env gives the run options (core/run_options.py): a text is set in the
+environment of the subprocess, None removes the variable. run.json keeps the
+variables set.
 
   - pytest: tests/host/hil runs in its own process group with the
     hil_events plugin (plugins/hil_events.py); the runner follows
@@ -43,12 +47,13 @@ finished is set once run_end has been handed over.
 The runner does not free the serial port (the TUI releases its session
 first), writes no report (report.py) and shows nothing. No Textual import.
 
-Version: 1.1
-Date: 11/11/2026
+Version: 1.2
+Date: 23/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  10/11/2026  Initial version.
   1.1  11/11/2026  Fix Totals against the junit.xml of pytest 9.1 and later: the teardown error rule follows the installed pytest.
+  1.2  23/11/2026  Run options: environment variables of the run, kept in run.json.
 """
 
 import json
@@ -158,7 +163,8 @@ class Run:
 
     def __init__(self, kind: str, selection=None, on_event=None, *, everything: bool = False,
                  scenario=None, request=None, ask=None, results: Path | str = RESULTS,
-                 tests: Path | str = HIL_DIR, rx_commands: list | None = None, bench: Path | str = BENCH):
+                 tests: Path | str = HIL_DIR, rx_commands: list | None = None, bench: Path | str = BENCH,
+                 env: dict | None = None):
         if kind not in KINDS:
             raise ValueError(f"kind must be one of {', '.join(KINDS)}")
         if kind == "scenario" and (scenario is None or request is None or ask is None):
@@ -172,6 +178,7 @@ class Run:
         self.tests = Path(tests)
         self.bench = Path(bench)
         self.rx_commands = rx_commands
+        self.env = dict(env or {})
         self.folder = self._folder(Path(results))
         self.events_path = self.folder / "events.jsonl"
         self.totals = Totals()
@@ -197,6 +204,7 @@ class Run:
         self.folder.mkdir(parents=True, exist_ok=False)
         self._meta = {"kind": self.kind, "selection": self._selection_text(), "everything": self.everything,
                       "folder": str(self.folder), "commit": _commit(), "bench": str(self.bench),
+                      "env": {name: value for name, value in self.env.items() if value is not None},
                       "started": time.time(), "commands": self._commands()}
         try:
             shutil.copyfile(self.bench, self.folder / "bench.yaml")
@@ -289,7 +297,7 @@ class Run:
             with self._lock:
                 if self.stop_requested:
                     return 2
-                self._process = subprocess.Popen(command, cwd=REPO, env=_env(), stdout=output,
+                self._process = subprocess.Popen(command, cwd=REPO, env=_env(self.env), stdout=output,
                                                  stderr=subprocess.STDOUT, start_new_session=True)
             position, partial = 0, ""
             while True:
@@ -401,7 +409,7 @@ class Run:
 
     def _spawn(self, command: list):
         with self._lock:
-            self._process = subprocess.Popen(command, cwd=REPO, env=_env(), stdout=subprocess.PIPE,
+            self._process = subprocess.Popen(command, cwd=REPO, env=_env(self.env), stdout=subprocess.PIPE,
                                              stderr=subprocess.STDOUT, text=True, bufsize=1,
                                              start_new_session=True)
             return self._process
@@ -510,8 +518,14 @@ def _event(event: str, **fields) -> dict:
     return {"t": time.time(), "event": event, **fields}
 
 
-def _env() -> dict:
+def _env(options: dict) -> dict:
+    """Environment of a subprocess: the one of the TUI, the run options, then what the runner needs."""
     env = dict(os.environ)
+    for name, value in options.items():
+        if value is None:
+            env.pop(name, None)
+        else:
+            env[name] = value
     env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(PLUGINS_DIR), env.get("PYTHONPATH")]))
     env["PYTHONUNBUFFERED"] = "1"  # Lines in order and at once through the pipe
     return env
