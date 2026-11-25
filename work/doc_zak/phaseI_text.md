@@ -5,8 +5,8 @@
 \brief      Phase I: text on the LCD, 11-text-console run in place and the HIL text command.
 
 \author     Z. BEN-AKKA
-\version    1.0
-\date       24/11/2026
+\version    1.1
+\date       25/11/2026
 
 \details
   Reference document of phase I. It records the frozen acceptance criteria,
@@ -16,9 +16,10 @@
   not in this file.
 
 \section phaseI_text_md_version_history Version history
-| Version | Date       | Author      | Description      |
-|:-------:|:----------:|:------------|:-----------------|
-| 1.0     | 24/11/2026 | Z. BEN-AKKA | Initial version. |
+| Version | Date       | Author      | Description                                         |
+|:-------:|:----------:|:------------|:----------------------------------------------------|
+| 1.0     | 24/11/2026 | Z. BEN-AKKA | Initial version.                                    |
+| 1.1     | 25/11/2026 | Z. BEN-AKKA | Lot 1 proofs; decisions A to C; verified values.    |
 ****************************
 -->
 
@@ -99,17 +100,20 @@ tests/firmware/hil_bench/        LCD_TEXT handler, names, keys and limits
 tests/host/                      commands.yaml, expected.py, cases/test_text.py, catalogue check
 ```
 
-Design choices of 24/11/2026:
+Design choices of 24/11/2026, completed by decisions A to C (section 9.1):
 
 | Item | Choice | Reason |
 |:--|:--|:--|
 | Application | `11-text-console`, images `11-text-console-app` (QSPI) and `11-text-console-boot` (08 bootloader) | Same form as 10-touch-paint |
 | Cell and screen | 8 × 16: 60 columns × 17 lines | 480 × 272 |
-| Font | JetBrains Mono, converted by `ttf2c.py`; the `.ttf` stays in `work/fonts/`, outside git | Free font; no binary in the repository |
-| Formats | 1 bit and 4 bits per pixel in the module; the application uses one (decision C) | Size against smoothness |
-| 4-bit blending | The background is a parameter: a table of 16 colours is computed once per colour pair. The 1-bit format uses its two ends | The framebuffer is never read; same code path and tests for both |
-| Terminal | Common module; the grid and its size are given by the caller; received bytes only change the grid | Testable on the PC; a line feed costs no pixel |
-| Rendering | Proposed: redraw only the cells that changed, at most one line between two reads of the queue. Compared on measurements with a copy by 32-bit words, with or without grouped line feeds | Decision C |
+| Font | JetBrains Mono v2.304 Regular, 13 px, baseline 13, converted by `ttf2c.py`; the `.ttf` stays in `work/fonts/`, outside git | Free font; no binary in the repository (decision B) |
+| 1-bit rendering | Threshold 128 of the smooth rendering | The FreeType monochrome rendering merges `"` (decision B) |
+| Generated headers | `OFL-1.1`, without `\version` and `\date` | License of the font; a date would break C2 |
+| Formats | 1 bit and 4 bits per pixel in the module; the application uses 4 bits (decision C) | Same duration; smoother |
+| Glyphs of the application | Copied from QSPI to DTCM at start (decision C) | Four times faster to draw (section 10.1) |
+| 4-bit blending | The background is a parameter: a table of 16 colours is computed once per colour pair. The 1-bit format uses its two ends. Level l of each RGB565 component is `(background * (15 - l) + colour * l + 7) / 15`, without gamma correction | The framebuffer is never read; same code path and tests for both |
+| Terminal | Common module; the circular grid and its size are given by the caller; received bytes only change the grid | Testable on the PC; a line feed costs no pixel |
+| Rendering | Redraw only the cells that changed, at most one line between two reads of the queue, 256 events per read at most (decision C). A copy by 32-bit words is faster per scroll, but the scrolls would have to be counted | Line feeds received together cost one drawing |
 | Counters | 1 s after the last byte, one line on the UART: `rx: bytes= ms= fe= ne= ore= ovf=` | Proof of C5; not an echo |
 | USART | Stopped (UE = 0) by the application before `UartInit` | RM0385, section 5 |
 | Measuring code | In `main.c` 1.0 and 1.1, removed in 1.2 | Each measurement keeps its code in the history |
@@ -129,6 +133,8 @@ Behaviour of the terminal (C4):
 | Byte from 0x80 | `?` in inverted colours |
 | UART error or full queue | `!` on red, once per series of errors |
 | Cursor | Fixed line at the bottom of the cell |
+| While a wrap waits (validated at I12) | Backspace erases the 60th character; tab has no effect; CR and LF cancel the wait |
+| End of a series of errors (validated at I12) | The next received byte, even ignored |
 
 `LCD_TEXT` (lot 2, specified in `tests/protocol.md` section 6.25 before any
 code):
@@ -168,14 +174,22 @@ The ST documents are read from `work/doc/ref/`, ignored by git.
 | Host tools: gcc 10.3.1, Pillow 12.2.0, FreeType 2.14.3 | Checked on 24/11/2026 |
 | `hil-bench` text 12645 bytes before phase I | `phaseG_touch.md` section 4 |
 
-NOT VERIFIED on 24/11/2026:
+Verified since 24/11/2026:
+
+| Item | Result |
+|:--|:--|
+| UART reception by interrupt from the QSPI flash, behind the bootloader | Works, no handler in RAM (decision A, section 10.1) |
+| Durations: cell, full screen, 32-bit copy, font in QSPI or DTCM | Measured at I15 (section 10.1) |
+| JetBrains Mono | v2.304, published on 14/01/2023, `https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip`, sha256 `6f6376c6ed2960ea8a963cd7387ec9d76e3f629125bc33d1fdcd7eb7012f7bbf`; `JetBrainsMono-Regular.ttf` sha256 `a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f` |
+| License | OFL 1.1, no reserved font name declared; `OFL.txt` copied unmodified. A delivered binary comes with it |
+| 8 × 16 cell | No glyph cut, empty or identical among the 95, checked by `ttf2c.py` |
+
+NOT VERIFIED on 25/11/2026:
 
 | Item | Checked at |
 |:--|:--|
-| UART reception by interrupt from the QSPI flash, behind the bootloader | Decision A |
-| Durations: cell, full screen, 32-bit copy, font in QSPI or DTCM | Decisions A and C |
-| Version, URL, sha256 and license of JetBrains Mono (OFL 1.1 expected; reserved font name to check). The generated headers are expected to be `OFL-1.1`, not MIT | Decision B |
-| 8 × 16 cell: no glyph cut (descenders, braces, `@`, `W`) | Decision B |
+| Cause of the stray reception at the first opening of the port after a flash (section 10.1) | — |
+| Why both formats take the same time (assumed: `text.c` reads one glyph byte per pixel) | — |
 | Duration of the pixel read-back in `test_text.py` | TE7 |
 
 ## 6. Issues and labels
@@ -200,12 +214,15 @@ The rules of `ci/README.md` section 9 apply, with these additions:
 - Exception, validated: TE6 is one sub-branch with five commits, one per file
   (`hil_protocol.h`, `commands.yaml`, `commands.c`, `expected.py`,
   `test_catalog.py`), because `test_catalog.py` and CAPS tie the names.
+- Exceptions, validated on 25/11/2026: one pull request for I6 to I9 (#143) and
+  one for I10 to I18 (#144), from stacked sub-branches, one file per commit.
 - The developer runs every check on the board. A check counts as passed once
   its output has been pasted or its run folder has been read.
 - I2 and I3 are checked together on the board: `main.c` first in the history,
   since the image of the `Makefile` needs it.
 - Reference of C7: `work/phaseI_ref.sha256` (outside git), the 16 images
-  other than `hil-bench` at `a851989`. Check: `make all`, then
+  other than `hil-bench` at `a851989`. Check: `make clean` (the objects do not
+  depend on the `Makefile`), `make all`, then
   `sha256sum -c --quiet work/phaseI_ref.sha256`.
 - At the start of each sub-step, `git fetch --prune` and
   `git log --oneline origin/phaseI-text/integration..origin/develop`.
@@ -242,9 +259,9 @@ One file per sub-step, in this order. Every commit compiles.
 | I1 | `work/doc_zak/phaseI_text.md` 1.0 | This document | — |
 | I2 | `dev/apps/11-text-console/main.c` 1.0 | Probe: interrupt RX from QSPI, counters, framebuffer copy measured | C5 |
 | I3 | `Makefile` | `11-text-console` in `MULTI` | C7, C8 |
-| **A** | Decision | Reception from the QSPI flash proved; copy duration known | C5 |
+| **A** | Decision, taken on 24/11/2026 | Reception from the QSPI flash proved; no handler in RAM; copy duration known | C5 |
 | I4 | `dev/tools/ttf2c.py` | Converter, with a PNG preview | C2 |
-| **B** | Decision | 8 × 16 rendering and license accepted by the developer | C1 |
+| **B** | Decision, taken on 25/11/2026 | 8 × 16 rendering (Regular 13 px, threshold 128) and license accepted by the developer | C1 |
 | I5 | `dev/common/font/OFL.txt` | License | — |
 | I6 | `dev/common/font/mono_8x16_1bpp.h` | Generated | C1, C2 |
 | I7 | `dev/common/font/mono_8x16_4bpp.h` | Generated | C1, C2 |
@@ -256,7 +273,7 @@ One file per sub-step, in this order. Every commit compiles.
 | I13 | `dev/common/terminal/terminal.c` | Grid and editing, checked on the PC | C3, C4 |
 | I14 | `Makefile` | Modules `font text terminal` in 11-text-console | C7 |
 | I15 | `dev/apps/11-text-console/main.c` 1.1 | Character sheet, rendering measured | C1 |
-| **C** | Decision | Scrolling and format chosen on the measurements | — |
+| **C** | Decision, taken on 25/11/2026 | 4 bits, glyphs in DTCM, changed cells redrawn, one line at most per turn | — |
 | I16 | `dev/apps/11-text-console/main.c` 1.2 | UART to LCD terminal | C3 to C6 |
 | I17 | `dev/apps/11-text-console/README.md` | Build, flash, checks | — |
 | I18 | `dev/docs/mainpage.md` | Application and modules | — |
@@ -288,4 +305,69 @@ board and 42 unit) before phase H, about 237 after it.
 
 ## 10. Proofs
 
-None yet. Lot 1 at I19, lot 2 at TE8.
+### 10.1 Lot 1
+
+Recorded on 25/11/2026, integration branch at `4fbeb1b`
+(`11-text-console-app.bin` sha256 `db808c1d…`, the image of the I16 checks).
+Board checks were made by the developer after `make 11-text-console-flash` and a
+reset. "Reported by the developer" means that no output was copied.
+
+| # | Proof | Result |
+|:-:|:--|:--|
+| C1 | Character sheet of `main.c` 1.1 on the board; the same sheet drawn on the PC by the real modules | Screen conform, both formats, right and bottom edges included (developer's check, by eye) |
+| C1 | Both headers decoded by a separate script and compared with Pillow; `text.c` against an independent reference (sanitizers on) | 0 wrong pixel; 0 error in 200048 cases, 12 wrong variants of `text.c` detected |
+| C2 | `ttf2c.py` run several times, in other folders, and with `FREETYPE_PROPERTIES` set | Same sha256: 1 bit `8cc0a4d2…`, 4 bits `34835fef…` (Pillow 12.2.0, FreeType 2.14.3). Without the tool, that variable changes 12 and 31 pixels |
+| C3 | Console on the board: 60 characters, Enter, `y`; 20 Enters | Screen conform, no empty line, scroll (developer's check, by eye) |
+| C4 | Console on the board: CR LF, form feed, backspace, tab, `é` | Screen conform (developer's check, by eye) |
+| C3, C4 | `terminal.c` on the PC (sanitizers on) | 48 written cases and 45027 random states, 0 difference with an independent model; 29 wrong variants detected |
+| C5 | Probe `main.c` 1.0: two single writes of 8192 bytes (output copied) | Characters: `rx: bytes=8192 ms=717 fe=0 ne=0 ore=0 ovf=0 sum=0x0009EDD0`; LF: the same with `sum=0x00014000`. 12 repeats reported by the developer |
+| C5 | Console `main.c` 1.2: form feed and 8191 bytes in lines of 60 columns, then 8192 LF, one write each (output copied on 25/11/2026) | Twice `rx: bytes=8192 ms=712 fe=0 ne=0 ore=0 ovf=0`. Screen conform (developer's check, by eye) |
+| C6 | Review of `text.c`, `terminal.c`, `main.c` 1.2 | Every added loop is bounded by the grid, the cell, 17 lines or 256 events; only the main loop is endless. Not displayable bytes and UART errors have a bounded path |
+| C6 | The real loop replayed on the PC at 115200 baud with the durations of I15 (interrupts not counted) | 18 scenarios, up to 65536 bytes: 0 wrong pixel, 0 lost, longest turn 594 µs, queue at most 7 of 256 |
+| C7 | `make clean`, `make all`, `sha256sum -c` after each sub-step that changes code or the `Makefile` | 16 of 16 images unchanged, also at `4fbeb1b`; `11-text-console-boot` identical to `08-custombootloader-boot` (`17cca139…`) |
+| C7 | Required check `continuous-integration/jenkins/pr-merge` | SUCCESS on #137 to #139 and #141 to #144. The HIL counts (246 passed, 8 skipped expected) and T1–T8 were not copied (NOT VERIFIED) |
+| C8 | `make 11-text-console-app-size`, `objdump -h` at `4fbeb1b` | Text 11172 bytes from `0x90000000`, far below offset `0x00FF0000`; no `.data`; `.bss` of 10890 bytes from `0x20000000` (DTCM), stack at the top of the DTCM; `.framebuffer` at `0x20010000` (SRAM, NOLOAD). Only the 4-bit font is in the image |
+
+Durations of I15, copied from the board, three resets (the first one below, the
+others within 2 µs; 216 MHz, LTDC reading the framebuffer):
+
+| Measure | Duration |
+|:--|--:|
+| Palette of 16 colours | 8 µs |
+| 1020 cells, 1 bit, glyphs in QSPI / DTCM | 36646 µs / 9239 µs |
+| 1020 cells, 4 bits, glyphs in QSPI / DTCM | 36632 µs / 9230 µs |
+| One line of 60 cells, 4 bits, glyphs in QSPI | 2157 µs |
+| Comparison of the 1020 cells (`changed=0`) | 237 µs |
+| Line feed that scrolls, form feed (grid) | 5 µs, 18 µs |
+| Scroll by a copy of 32-bit words | 2679 µs |
+| LTDC FIFO underrun | 0 |
+
+C5 is checked again with these commands, with miniterm closed; expected
+`rx: bytes=8192 ms=<close to 711> fe=0 ne=0 ore=0 ovf=0` twice, the lines `0116`
+to `0132` (the last one is `0132 GH`), then an empty screen with the cursor at
+the bottom left:
+
+```sh
+python3 -c "import serial; d=b''.join(b'%04d '%i+bytes(33+(i+k)%94 for k in range(55))+b'\r\n' for i in range(133))[:8192]; p=serial.Serial('/dev/ttyACM0',115200,timeout=3); p.reset_input_buffer(); p.write(b'\f'+d[:-1]); p.flush(); print(p.readline())"
+```
+
+```sh
+python3 -c "import serial; p=serial.Serial('/dev/ttyACM0',115200,timeout=3); p.reset_input_buffer(); p.write(b'\n'*8192); p.flush(); print(p.readline())"
+```
+
+Observations:
+
+- Stray reception at the first opening of the port after a flash, without any
+  byte sent: `bytes=1 fe=1 sum=0xFA` at I2, `bytes=3 ms=1 sum=0x1C2` without error
+  at I3. It looks like a character at a lower baud rate sent when the port is
+  opened (NOT VERIFIED). With the console, the opening before the C5 check received
+  nothing in 3 s; the flash before it was not copied.
+- Jenkins on 24/11/2026: first `pr-merge` build of #139 in error at 15:10 UTC,
+  green at 15:23; the `branch` build (not required) of the same commit in error
+  at 21:45. Causes not read. The `branch` build of #143 was still pending on
+  25/11/2026.
+- Programs of the PC checks: outside the repository, not kept.
+
+### 10.2 Lot 2
+
+At TE8.
