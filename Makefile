@@ -5,7 +5,7 @@
 # \brief      Build, flash and document project images for a board.
 #
 # \author     Z. BEN-AKKA
-# \version    1.18
+# \version    1.19
 # \date       25/11/2026
 #
 # \details
@@ -19,8 +19,8 @@
 #   only call. Applications and test images are declared as images; the rules
 #   for every image come from the IMAGE template. Both test images link the
 #   shared GPIO, UART and LED modules; hil-bench adds its protocol modules
-#   and headers, and the delay, framebuffer, I2C, LTDC, QSPI, RCC and touch
-#   modules.
+#   and headers, and the delay, framebuffer, font, I2C, LTDC, QSPI, RCC, text
+#   and touch modules.
 #   hil-bench also gets hil_build.h, the git revision it was built from, for
 #   its readiness banner.
 #   07-lcd-logo-xip pairs the 08 bootloader with 07-lcd-logo run in place
@@ -54,6 +54,7 @@
 # | 1.16    | 19/11/2026 | Z. BEN-AKKA | Link the touch commands and the I2C and touch modules into hil-bench. |
 # | 1.17    | 24/11/2026 | Z. BEN-AKKA | Add 11-text-console: the text console run in place from QSPI. |
 # | 1.18    | 25/11/2026 | Z. BEN-AKKA | Link the font, text and terminal modules into 11-text-console. |
+# | 1.19    | 25/11/2026 | Z. BEN-AKKA | Link the font and text modules into the hil-bench image.    |
 # ****************************
 # */
 
@@ -104,7 +105,7 @@ $(foreach a,$(SINGLE),$(eval $(a)_SRCS := $(APPS_DIR)/$(a)/main.c))
 HIL_BENCH := tests/firmware/hil_bench
 hil-bench_IMAGES  := hil-bench
 hil-bench_SRCS    := $(addprefix $(HIL_BENCH)/,main.c reset_cause.c line.c protocol.c dispatch.c commands.c lcd_commands.c touch_commands.c)
-hil-bench_MODULES := delay fb gpio i2c led ltdc qspi rcc touch uart
+hil-bench_MODULES := delay fb font gpio i2c led ltdc qspi rcc text touch uart
 hil-bench_CFLAGS  := -I$(HIL_BENCH)/inc -I$(BUILD)/hil-bench
 
 # UART driver diagnostic: raw echo and RX error markers (uart_rx_check.py T1-T8)
