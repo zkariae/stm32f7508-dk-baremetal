@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: MIT -->
-<!-- Doxygen main page (Z. BEN-AKKA, 23/11/2026); images live in dev/docs/images. -->
+<!-- Doxygen main page (Z. BEN-AKKA, 25/11/2026); images live in dev/docs/images. -->
 
 # STM32F7508-DK bare-metal {#mainpage}
 
@@ -23,6 +23,7 @@ written at register level: no HAL, no CMSIS, no CubeMX.
 | 09-securebootloader    | Same, starting the application only if its SHA-256 matches     |
 | 07-lcd-logo-xip        | 07-lcd-logo at 216 MHz, run in place from QSPI by the 08 bootloader |
 | 10-touch-paint         | Finger painting with the touch panel, run in place from QSPI by the 08 bootloader |
+| 11-text-console        | Text received on the UART shown on the LCD, run in place from QSPI by the 08 bootloader |
 
 ## Shared code
 
@@ -32,7 +33,8 @@ The repository has two sides:
   - `apps/`: the applications above, one `main.c` each.
   - `common/`: generic drivers (`gpio`, `led`, `uart`, `rcc`, `delay`, `ltdc`,
     `fb`, `qspi`, `boot`, `i2c`, `touch`), the hardware they drive is a
-    parameter; `defines.h` holds the project-wide return codes.
+    parameter; text modules (`font`, `text`, `terminal`); `defines.h` holds the
+    project-wide return codes.
   - `scripts/`, `tools/`, `docs/`: formatting, documentation, host tools.
 - **`stm32f7508-dk/`** (one folder per board, a Git submodule): everything
   specific to that board, and nothing about the applications.
