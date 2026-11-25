@@ -10,7 +10,7 @@ Send checks the typed form with Catalog.check and shows the error under the
 faulty field; nothing is sent then. The free form sends "key=value ..." as
 typed, to make the firmware reject a value on purpose; only a token without
 "=" is refused, since a request cannot carry it. requires is a note, never a
-block.
+block. A text field keeps its spaces; the free form shows its hexadecimal.
 
 The pane does not know the session: it posts CommandsPane.Send and the
 application asks for confirmation when effect is set, then sends. The
@@ -19,11 +19,12 @@ ERR, then every result field, whatever the command) or show_failure; the
 last result of each command shows again with its form. No command name is
 written here: everything comes from the catalogue, CAPS and the answers.
 
-Version: 1.0
-Date: 09/11/2026
+Version: 1.1
+Date: 25/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  09/11/2026  Initial version.
+  1.1  25/11/2026  Text fields: hint, spaces kept, hexadecimal in the free form.
 """
 
 import time
@@ -37,7 +38,7 @@ from textual.message import Message
 from textual.widgets import Button, Checkbox, Input, Label, OptionList, Select, Static
 from textual.widgets.option_list import Option
 
-from core.catalog import ArgumentError, Catalog, Entry, EntryStatus, default_text
+from core.catalog import ArgumentError, Catalog, Entry, EntryStatus, default_text, wire_text
 
 MARK_EFFECT = "!"
 
@@ -54,6 +55,8 @@ def hint(arg) -> str:
             text += f", multiple of {params['multiple_of']}"
     elif arg.type == "hexdata":
         text = f"{params['bytes'][0]} to {params['bytes'][1]} bytes, 2 hex digits each"
+    elif arg.type == "text":
+        text = f"{params['bytes'][0]} to {params['bytes'][1]} ASCII characters"
     elif arg.type == "letter":
         text = f"{params['min']} to {params['max']}"
     elif arg.type == "color":
@@ -248,7 +251,9 @@ class CommandsPane(Horizontal):
             if values is None and command is not None:  # Free form chosen before: start from the defaults
                 values = {arg.name: default_text(arg) for arg in command.args if default_text(arg)}
             values = values or {}
-            line = " ".join(f"{key}={value}" for key, value in values.items())
+            if command is not None:  # As sent: a text may hold spaces and "="
+                values = {arg.name: wire_text(arg, values[arg.name]) for arg in command.args if arg.name in values}
+            line =" ".join(f"{key}={value}" for key, value in values.items())
             widgets.append(Horizontal(Label("args"), Input(line, placeholder="key=value ...", id="free-line",
                                                            compact=True), classes="field"))
         else:
@@ -278,7 +283,9 @@ class CommandsPane(Horizontal):
             found = self.query(f"#arg-{arg.name}")
             if not found:
                 continue
-            value = str(found.first().value).strip()
+            value = str(found.first().value)
+            if arg.type != "text":  # The spaces of a text are characters to send
+                value = value.strip()
             if value:
                 values[arg.name] = value
         return values
