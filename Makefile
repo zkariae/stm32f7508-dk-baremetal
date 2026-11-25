@@ -5,8 +5,8 @@
 # \brief      Build, flash and document project images for a board.
 #
 # \author     Z. BEN-AKKA
-# \version    1.17
-# \date       24/11/2026
+# \version    1.18
+# \date       25/11/2026
 #
 # \details
 #   Says what to build: the applications, their sources, modules and
@@ -53,6 +53,7 @@
 # | 1.15    | 19/11/2026 | Z. BEN-AKKA | Add 10-touch-paint: the paint app run in place from QSPI.   |
 # | 1.16    | 19/11/2026 | Z. BEN-AKKA | Link the touch commands and the I2C and touch modules into hil-bench. |
 # | 1.17    | 24/11/2026 | Z. BEN-AKKA | Add 11-text-console: the text console run in place from QSPI. |
+# | 1.18    | 25/11/2026 | Z. BEN-AKKA | Link the font, text and terminal modules into 11-text-console. |
 # ****************************
 # */
 
@@ -156,7 +157,7 @@ BOOT_MODULES := boot delay gpio led qspi uart
 11-text-console-boot_SRCS    := $(APPS_DIR)/08-custombootloader/main.c
 11-text-console-boot_MODULES := $(BOOT_MODULES)
 11-text-console-app_SRCS     := $(APPS_DIR)/11-text-console/main.c
-11-text-console-app_MODULES  := delay fb gpio ltdc rcc uart
+11-text-console-app_MODULES  := delay fb font gpio ltdc rcc terminal text uart
 11-text-console-app_MEMORY   := qspi
 
 MULTI  := 08-custombootloader 09-securebootloader 07-lcd-logo-xip 10-touch-paint 11-text-console
