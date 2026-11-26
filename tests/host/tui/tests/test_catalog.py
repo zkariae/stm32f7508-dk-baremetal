@@ -11,7 +11,7 @@ Not tested here: the checks between arguments (QSPI_READ addr + len,
 QSPI_WRITE page), which stay with the firmware, and sending the commands to
 the board (tests/test_catalog_board.py).
 
-Version: 1.3
+Version: 1.4
 Date: 25/11/2026
 Author: Z. BEN-AKKA
 History:
@@ -19,6 +19,7 @@ History:
   1.1  20/11/2026  LCD_CIRCLE also requires LCD_INIT (protocol 1.4).
   1.2  20/11/2026  LCD_LINE also requires LCD_INIT (protocol 1.4).
   1.3  25/11/2026  Add the text type tests.
+  1.4  25/11/2026  LCD_TEXT also requires LCD_INIT (protocol 1.5).
 """
 
 import pytest
@@ -29,7 +30,7 @@ from core.catalog import ArgumentError, CatalogError, EntryStatus, default_text,
 CATALOGUE = load()
 
 LCD_AFTER_INIT = ["LCD_CLOCK", "LCD_TIMING", "LCD_LAYER", "LCD_SCAN", "LCD_FILL", "LCD_PIXEL", "LCD_CIRCLE",
-                  "LCD_LINE"]
+                  "LCD_LINE", "LCD_TEXT"]
 
 
 # Firmware and catalogue: C1, both directions
