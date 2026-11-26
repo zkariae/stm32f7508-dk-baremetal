@@ -5,7 +5,7 @@
 \brief      Minimal HIL protocol constants for the bench firmware.
 
 \author     Z. BEN-AKKA
-\version    1.9
+\version    1.10
 \date       25/11/2026
 
 \details
@@ -26,6 +26,7 @@
 | 1.7     | 20/11/2026 | Z. BEN-AKKA | Protocol 1.4: LCD_CIRCLE name, radius key and limits. |
 | 1.8     | 20/11/2026 | Z. BEN-AKKA | Protocol 1.4: LCD_LINE name, end point keys and radius limit. |
 | 1.9     | 25/11/2026 | Z. BEN-AKKA | Protocol 1.5: LCD_TEXT keys, font names and data limit; fw 1.5.0. |
+| 1.10    | 25/11/2026 | Z. BEN-AKKA | Protocol 1.5: LCD_TEXT command name. |
 ****************************
 */
 
@@ -197,6 +198,7 @@
 #define HIL_CMD_LCD_PIXEL    "LCD_PIXEL"
 #define HIL_CMD_LCD_CIRCLE   "LCD_CIRCLE"
 #define HIL_CMD_LCD_LINE     "LCD_LINE"
+#define HIL_CMD_LCD_TEXT     "LCD_TEXT"
 #define HIL_CMD_TOUCH_ID     "TOUCH_ID"
 #define HIL_CMD_TOUCH_READ   "TOUCH_READ"
 #define HIL_CAPS_TOTAL_MIN   2u
