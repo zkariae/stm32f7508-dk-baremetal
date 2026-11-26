@@ -5,11 +5,11 @@
 \brief      GPIO_CONFIG and LCD commands of the HIL protocol firmware.
 
 \author     Z. BEN-AKKA
-\version    1.2
-\date       20/11/2026
+\version    1.3
+\date       25/11/2026
 
 \details
-  Implements protocol.md sections 6.11 to 6.19, 6.23 and 6.24. The handlers have
+  Implements protocol.md sections 6.11 to 6.19 and 6.23 to 6.25. The handlers have
   the CommandRun signature of commands.h and are listed in its table.
 
 \section lcd_commands_h_version_history Version history
@@ -18,6 +18,7 @@
 | 1.0     | 29/10/2026 | Z. BEN-AKKA | Initial version. |
 | 1.1     | 20/11/2026 | Z. BEN-AKKA | Declare LcdCircleCmd. |
 | 1.2     | 20/11/2026 | Z. BEN-AKKA | Declare LcdLineCmd. |
+| 1.3     | 25/11/2026 | Z. BEN-AKKA | Declare LcdTextCmd. |
 ****************************
 */
 
@@ -57,5 +58,8 @@ const char *LcdCircleCmd(const CommandArg *args, uint32_t count, Record *result)
 
 /// LCD_LINE: draw a stroke of discs between two points (section 6.24).
 const char *LcdLineCmd(const CommandArg *args, uint32_t count, Record *result);
+
+/// LCD_TEXT: draw characters side by side on one line (section 6.25).
+const char *LcdTextCmd(const CommandArg *args, uint32_t count, Record *result);
 
 #endif /* LCD_COMMANDS_H */

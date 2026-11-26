@@ -5,8 +5,8 @@
 \brief      HIL firmware-to-host protocol specification.
 
 \author     Z. BEN-AKKA
-\version    1.13
-\date       20/11/2026
+\version    1.14
+\date       25/11/2026
 
 \details
   Specifies the HIL host-firmware serial interface, including record syntax,
@@ -31,6 +31,7 @@
 | 1.11    | 20/11/2026 | Z. BEN-AKKA | Touch: a count above 5 means no touch, not DEVICE_ERROR (section 6.20). |
 | 1.12    | 20/11/2026 | Z. BEN-AKKA | Specify LCD_CIRCLE (section 6.23); protocol 1.4. |
 | 1.13    | 20/11/2026 | Z. BEN-AKKA | Specify LCD_LINE (section 6.24); protocol 1.4. |
+| 1.14    | 25/11/2026 | Z. BEN-AKKA | Specify LCD_TEXT (section 6.25); protocol 1.5. |
 ****************************
 -->
 
@@ -49,10 +50,11 @@ the STM32F7508-DK HIL bench firmware. It specifies:
 - timeouts and recovery.
 
 
-The command set of protocol 1.4 contains `HELLO`, `CAPS`, `LED_SET`,
+The command set of protocol 1.5 contains `HELLO`, `CAPS`, `LED_SET`,
 `LED_GET`, `QSPI_ID`, `QSPI_READ`, `QSPI_ERASE`, `QSPI_WRITE`, `GPIO_CONFIG`,
 `LCD_INIT`, `LCD_CLOCK`, `LCD_TIMING`, `LCD_LAYER`, `LCD_SCAN`, `LCD_FILL`,
-`LCD_PIXEL`, `TOUCH_ID` and `TOUCH_READ`. Additional commands SHALL be specified in section 6 before either
+`LCD_PIXEL`, `LCD_CIRCLE`, `LCD_LINE`, `LCD_TEXT`, `TOUCH_ID` and
+`TOUCH_READ`. Additional commands SHALL be specified in section 6 before either
 endpoint implements them.
 
 ### 1.1 Conventions
@@ -157,7 +159,7 @@ This document uses three independent version identifiers:
 | Protocol version | `proto` field of the readiness banner | Identifies the wire protocol implemented by the firmware. |
 | Firmware version | `fw` field of the readiness banner | Identifies the firmware image. |
 
-This revision of the document specifies protocol version **1.4**. A document
+This revision of the document specifies protocol version **1.5**. A document
 revision MAY change without changing the protocol version, for example to
 clarify wording.
 
@@ -510,20 +512,20 @@ RESULT id=2 status=OK total=8 start=0 names=HELLO,CAPS,LED_SET,LED_GET,QSPI_ID,Q
 END id=2
 ```
 
-Example (informative), with three pages, for the twenty commands of
-protocol 1.4. The second page stops before `LCD_PIXEL`: the room for
+Example (informative), with three pages, for the twenty-one commands of
+protocol 1.5. The second page stops before `LCD_PIXEL`: the room for
 ` next=15` must remain. The pages are the same for every request id, up to
 `id=65535` (126 bytes for the longest line):
 
 ```text
 CMD id=2 command=CAPS
-RESULT id=2 status=OK total=20 start=0 names=HELLO,CAPS,LED_SET,LED_GET,QSPI_ID,QSPI_READ,QSPI_ERASE,QSPI_WRITE next=8
+RESULT id=2 status=OK total=21 start=0 names=HELLO,CAPS,LED_SET,LED_GET,QSPI_ID,QSPI_READ,QSPI_ERASE,QSPI_WRITE next=8
 END id=2
 CMD id=3 command=CAPS start=8
-RESULT id=3 status=OK total=20 start=8 names=GPIO_CONFIG,LCD_INIT,LCD_CLOCK,LCD_TIMING,LCD_LAYER,LCD_SCAN,LCD_FILL next=15
+RESULT id=3 status=OK total=21 start=8 names=GPIO_CONFIG,LCD_INIT,LCD_CLOCK,LCD_TIMING,LCD_LAYER,LCD_SCAN,LCD_FILL next=15
 END id=3
 CMD id=4 command=CAPS start=15
-RESULT id=4 status=OK total=20 start=15 names=LCD_PIXEL,LCD_CIRCLE,LCD_LINE,TOUCH_ID,TOUCH_READ
+RESULT id=4 status=OK total=21 start=15 names=LCD_PIXEL,LCD_CIRCLE,LCD_LINE,LCD_TEXT,TOUCH_ID,TOUCH_READ
 END id=4
 ```
 
@@ -769,14 +771,15 @@ END id=9
 ### 6.12 LCD commands
 
 `LCD_INIT`, `LCD_CLOCK`, `LCD_TIMING`, `LCD_LAYER`, `LCD_SCAN`, `LCD_FILL`,
-`LCD_PIXEL`, `LCD_CIRCLE` (section 6.23) and `LCD_LINE` (section 6.24) drive
-and check the 480 × 272 RK043FN48H panel of the board through the LTDC [N4]
-[I7] [I8]. The following rules apply to the nine commands.
+`LCD_PIXEL`, `LCD_CIRCLE` (section 6.23), `LCD_LINE` (section 6.24) and
+`LCD_TEXT` (section 6.25) drive and check the 480 × 272 RK043FN48H panel of
+the board through the LTDC [N4] [I7] [I8]. The following rules apply to the
+ten commands.
 
 | Item | Rule |
 |:--|:--|
 | Prerequisite | Until `LCD_INIT` has succeeded in the current session, every LCD command except `LCD_INIT` SHALL return `status=ERR code=BUSY` and SHALL NOT change any state. |
-| Colour | RGB565: red in bits 15:11, green in bits 10:5, blue in bits 4:0. A `color` argument is `0x` followed by 1 to 4 hexadecimal digits, at most `0xFFFF`; a `color` result is `0x` followed by exactly 4 digits. Digit case follows section 6.6. |
+| Colour | RGB565: red in bits 15:11, green in bits 10:5, blue in bits 4:0. A `color` or `bg` argument is `0x` followed by 1 to 4 hexadecimal digits, at most `0xFFFF`; a `color` result is `0x` followed by exactly 4 digits. Digit case follows section 6.6. |
 | Framebuffer | 480 × 272 RGB565 pixels, 261120 bytes, row by row from the top-left pixel: pixel (x, y) is the 16-bit word at `fb_addr + 2 × (y × 480 + x)`. It SHALL start at `0x20010000`, the first address of the 256 KB SRAM. |
 | Content | The content of the framebuffer is undefined until `LCD_INIT` has succeeded. |
 
@@ -1130,10 +1133,60 @@ RESULT id=21 status=OK
 END id=21
 ```
 
-### 6.25 Future commands (informative)
+### 6.25 `LCD_TEXT`
+
+`LCD_TEXT` draws 1 to 20 characters side by side on one line. It is an LCD
+command: the rules of section 6.12 apply.
+
+| Item | Specification |
+|:--|:--|
+| Arguments | `x` (required): left column of the first character, unsigned decimal integer from 0 to 479. `y` (required): top row of the characters, unsigned decimal integer from 0 to 271. Both without leading zeros. `font` (required): `1bpp` or `4bpp`. `color` (required): RGB565 colour of the text, `bg` (required): RGB565 colour behind it, as defined in section 6.12. `data` (required): the characters, 2 to 40 hexadecimal digits, an even number of them, two per byte, the leftmost character first; digit case follows section 6.6. Each byte is from 0x20 to 0x7E. |
+| Success result | No result field. |
+| Error codes | `BUSY` before `LCD_INIT` (section 6.12). `INVALID_ARGUMENT` if an argument is missing, malformed or out of range, or if any other argument is present; the framebuffer is then unchanged. `BAD_REQUEST` as defined in section 5.2.1. |
+| Timeout | 2 s. |
+| Side effects | Character i of `data`, counted from 0, takes the cell of 8 × 16 pixels whose top-left pixel is (x + 8 × i, y). Every pixel of the cell is written with the colour of its level, which the panel shows from the next frame. There is no wrap: the part of a cell outside the framebuffer is not drawn, and the other pixels are unchanged. |
+
+The level of a pixel is an integer from 0, the background, to 15, the text.
+It comes from the glyph of the character, stored in the repository file of
+the font:
+
+| `font` | File | Bytes per glyph | Bytes per row | Level of a pixel |
+|:--|:--|--:|--:|:--|
+| `1bpp` | `dev/common/font/mono_8x16_1bpp.h` | 16 | 1 | 15 if its bit is 1, 0 if it is 0 |
+| `4bpp` | `dev/common/font/mono_8x16_4bpp.h` | 64 | 4 | The value of its 4 bits |
+
+The glyphs follow each other in the order of their codes, from 0x20 to 0x7E.
+The rows of a glyph are stored from the top, the pixels of a row from the
+left, in the high bits of a byte first.
+
+The colour of level l is computed on each RGB565 component, red, green and
+blue, where b is the component of `bg` and c the component of `color`. The
+division is an integer division, rounded down:
+
+```text
+(b × (15 − l) + c × l + 7) / 15
+```
+
+Level 0 is then exactly `bg`, and level 15 exactly `color`. There is no gamma
+correction.
+
+> **Note (informative):** The text is sent in hexadecimal because a value
+> contains neither a space nor `=` (section 2.3). The longest request is 120
+> bytes long.
+
+Example (informative), `Hello` in white on black at the top left of the
+screen:
+
+```text
+CMD id=22 command=LCD_TEXT x=0 y=0 font=4bpp color=0xFFFF bg=0x0000 data=48656C6C6F
+RESULT id=22 status=OK
+END id=22
+```
+
+### 6.26 Future commands (informative)
 
 The following example shows how a future peripheral command would use the
-same envelope. `SDRAM_TEST` is not part of protocol version 1.4 and SHALL
+same envelope. `SDRAM_TEST` is not part of protocol version 1.5 and SHALL
 NOT be implemented until it is specified according to section 6.1.
 
 ```text

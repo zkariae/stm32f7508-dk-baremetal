@@ -4,14 +4,14 @@
 # \brief      HIL command catalogue: arguments, defaults and effects of each command.
 #
 # \author     Z. BEN-AKKA
-# \version    1.3
-# \date       20/11/2026
+# \version    1.4
+# \date       25/11/2026
 #
 # \details
 #   CAPS gives the command names only; this catalogue tells how to ask for
 #   each command, so the TUI builds its forms from data (tests/host/tui/
 #   README.md section 4.2). Source: tests/protocol.md section 6, not the
-#   firmware. The order follows the CAPS list of protocol 1.4.
+#   firmware. The order follows the CAPS list of protocol 1.5.
 #
 #   Entry fields:
 #     group     Display group.
@@ -27,6 +27,7 @@
 #     int       min, max: unsigned decimal, no leading zeros.
 #     hex       digits: [min, max] after 0x; min, max; multiple_of.
 #     hexdata   bytes: [min, max]; two hexadecimal digits per byte.
+#     text      bytes: [min, max]; typed in ASCII, sent as hexdata.
 #     letter    min, max: one uppercase letter.
 #     color     RGB565, 0x and 1 to 4 digits (section 6.12).
 #
@@ -42,6 +43,7 @@
 # | 1.1     | 20/11/2026 | Z. BEN-AKKA | Add TOUCH_ID and TOUCH_READ (protocol 1.4). |
 # | 1.2     | 20/11/2026 | Z. BEN-AKKA | Add LCD_CIRCLE (protocol 1.4). |
 # | 1.3     | 20/11/2026 | Z. BEN-AKKA | Add LCD_LINE (protocol 1.4). |
+# | 1.4     | 25/11/2026 | Z. BEN-AKKA | Add LCD_TEXT and the text type (protocol 1.5). |
 # ****************************
 
 schema_version: 1
@@ -188,6 +190,19 @@ commands:
       y1: {type: int, min: 0, max: 271, default: 136}
       radius: {type: int, min: 1, max: 20, default: 4}
       color: {type: color, default: 0x0000}
+
+  LCD_TEXT:
+    group: LCD
+    summary: Draw characters side by side on one line
+    spec: "6.25"
+    requires: LCD_INIT
+    args:
+      x: {type: int, min: 0, max: 479, default: 0}
+      y: {type: int, min: 0, max: 271, default: 0}
+      font: {type: enum, values: ["1bpp", "4bpp"], default: "4bpp"}
+      color: {type: color, default: 0xFFFF}
+      bg: {type: color, default: 0x0000}
+      data: {type: text, bytes: [1, 20], default: "Hello"}
 
   # No requires: the touch commands do not depend on LCD_INIT (section 6.20)
   TOUCH_ID:

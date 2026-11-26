@@ -9,13 +9,17 @@ Checks between arguments (QSPI_READ addr + len, QSPI_WRITE page) stay with
 the firmware. The free form, used to send a deliberately invalid value,
 does not go through Catalog.check.
 
+A value of the text type is typed in ASCII and sent in hexadecimal, two digits
+per character: a request value can hold neither a space nor "=".
+
 No Textual or pyserial import: the catalogue tests need no installation.
 
-Version: 1.0
-Date: 09/11/2026
+Version: 1.1
+Date: 25/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  09/11/2026  Initial version.
+  1.1  25/11/2026  Add the text type: typed in ASCII, sent in hexadecimal.
 """
 
 import enum
@@ -44,6 +48,7 @@ _TYPES = {
     "int": ({"min", "max"}, set()),
     "hex": ({"digits", "min", "max"}, {"multiple_of"}),
     "hexdata": ({"bytes"}, set()),
+    "text": ({"bytes"}, set()),
     "letter": ({"min", "max"}, set()),
     "color": (set(), set()),
 }
@@ -53,6 +58,7 @@ _ARG_NAME = re.compile(r"[a-z][a-z0-9_]*")
 _DECIMAL = re.compile(r"0|[1-9][0-9]*")  # No leading zeros
 _HEX = re.compile(r"0x([0-9A-Fa-f]+)")  # Lowercase prefix, either digit case
 _HEXDATA = re.compile(r"[0-9A-Fa-f]+")
+_PRINTABLE = re.compile(r"[ -~]*")  # ASCII 0x20 to 0x7E
 _COLOR = re.compile(r"0x[0-9A-Fa-f]{1,4}")  # protocol.md section 6.12
 _LETTER = re.compile(r"[A-Z]")
 _HEADER_NAME = re.compile(r'^\s*#\s*define\s+HIL_CMD_\w+\s+"([^"]*)"', re.MULTILINE)
@@ -131,6 +137,14 @@ def default_text(arg: Arg) -> str:
     return str(value)
 
 
+def wire_text(arg: Arg, text: str) -> str:
+    """The text as a request carries it: hexadecimal for the text type, unchanged otherwise.
+
+    Nothing is checked, so the free form can carry an invalid text too.
+    """
+    return text.encode("utf-8").hex().upper() if arg.type == "text" else text
+
+
 def check_value(arg: Arg, text: str) -> str:
     """The value to send, or ArgumentError if it breaks the argument rules."""
     params = arg.params
@@ -161,6 +175,13 @@ def check_value(arg: Arg, text: str) -> str:
         if not low <= len(text) // 2 <= high:
             raise ArgumentError(arg.name, f"{low} to {high} bytes")
         return text
+    if arg.type == "text":
+        low, high = params["bytes"]
+        if not _PRINTABLE.fullmatch(text):
+            raise ArgumentError(arg.name, "printable ASCII characters only")
+        if not low <= len(text) <= high:
+            raise ArgumentError(arg.name, f"{low} to {high} characters")
+        return wire_text(arg, text)
     if arg.type == "letter":
         if not _LETTER.fullmatch(text) or not params["min"] <= text <= params["max"]:
             raise ArgumentError(arg.name, f"one uppercase letter from {params['min']} to {params['max']}")
@@ -212,7 +233,9 @@ class Catalog:
                 raise ArgumentError(key, f"not an argument of {name}")
         result = {}
         for arg in command.args:
-            text = (values.get(arg.name) or "").strip()
+            text = values.get(arg.name) or ""
+            if arg.type != "text":  # The spaces of a text are characters to send
+                text = text.strip()
             if not text:
                 if arg.required:
                     raise ArgumentError(arg.name, "required")
@@ -339,7 +362,7 @@ def _check_params(where: str, kind: str, params: dict) -> None:
         step = params.get("multiple_of")
         if step is not None and (not _is_int(step) or step < 1):
             raise CatalogError(f"{where}.multiple_of: must be a positive integer")
-    if kind == "hexdata":
+    if kind in ("hexdata", "text"):
         _check_pair(f"{where}.bytes", params["bytes"])
     if kind == "letter":
         low, high = params["min"], params["max"]

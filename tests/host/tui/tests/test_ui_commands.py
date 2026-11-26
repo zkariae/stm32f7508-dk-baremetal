@@ -12,8 +12,9 @@ which pauses the session thread does not take a ready answer for a timeout.
 
 Checked: the list follows CAPS and the catalogue, each catalogue command is
 sent from its form with its default arguments, a typed error sends nothing,
-the free form sends a rejected value, the confirmation of a command with an
-effect, Send only in a session, a timeout and an unexpected reset lose the
+the free form sends a rejected value, a text field is typed in ASCII and sent
+in hexadecimal with its spaces, from both forms, the confirmation of a
+command with an effect, Send only in a session, a timeout and an unexpected reset lose the
 session and Recover brings it back, a busy port names its holder, the keys
 work from a field, Quit frees the port, and hil_tui.py stops on a bad bench
 or catalogue.
@@ -21,13 +22,14 @@ or catalogue.
 Not tested here: the real port and board (E16), the make targets, and the
 rendering in a real terminal (the VS Code key capture was checked by hand).
 
-Version: 1.2
-Date: 16/11/2026
+Version: 1.3
+Date: 25/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  09/11/2026  Initial version.
   1.1  13/11/2026  Wider timeouts of the fake bench and a longer wait: a loaded CI host missed the 0.3 s answer.
   1.2  16/11/2026  CAPS pages limited by the 128 byte line, as hil-bench: 8 names and next=16 passed it.
+  1.3  25/11/2026  Add the text field tests.
 """
 
 import asyncio
@@ -143,11 +145,11 @@ class Rig:
         return [line for line in lines if line != "command=HELLO" and not line.startswith("command=CAPS ")]
 
 
-def drive(rig: Rig, scenario, connected: bool = True) -> HilApp:
+def drive(rig: Rig, scenario, connected: bool = True, catalog=CATALOG) -> HilApp:
     """Run the application on the rig, wait for the session, then play the scenario."""
 
     async def main():
-        app = HilApp(rig.bench, CATALOG, rig.session)
+        app = HilApp(rig.bench, catalog, rig.session)
         try:
             async with app.run_test(size=SIZE) as pilot:
                 if connected:
@@ -276,6 +278,109 @@ def test_free_form_sends_a_rejected_value():
         assert "ERR" in result and "INVALID_ARGUMENT" in result
 
     drive(rig, scenario)
+
+
+# Text field: typed in ASCII, sent in hexadecimal
+
+TEXT_CATALOGUE = """\
+schema_version: 1
+commands:
+  CMD:
+    group: G
+    summary: s
+    spec: "6.1"
+    args:
+      x: {type: int, min: 0, max: 9, default: 3}
+      n: {type: text, bytes: [1, 20], default: "Hello"}
+  OTHER:
+    group: G
+    summary: s
+    spec: "6.1"
+    args: {}
+"""
+
+
+@pytest.fixture
+def play_text(tmp_path):
+    """Play scenario(rig, pilot, app) on the form of CMD, from a catalogue with a text argument."""
+    path = tmp_path / "commands.yaml"
+    path.write_text(TEXT_CATALOGUE, encoding="utf-8")
+    rig = Rig(caps=["HELLO", "CAPS", "CMD", "OTHER"])
+
+    def play(scenario):
+        async def on_form(pilot, app):
+            await select(pilot, app, "CMD")
+            await scenario(rig, pilot, app)
+
+        drive(rig, on_form, catalog=load(path))
+
+    return play
+
+
+async def check_free(pilot, app: HilApp) -> None:
+    app.query_one("#free", Checkbox).value = True
+    await settle(pilot, app)
+
+
+def test_text_field_shows_ascii(play_text):
+    async def scenario(rig, pilot, app):
+        field = app.query_one("#arg-n", Input)
+        assert field.value == "Hello"
+        assert field.placeholder == "1 to 20 ASCII characters"
+
+    play_text(scenario)
+
+
+@pytest.mark.parametrize("typed, sent", [
+    ("Hello world", "48656C6C6F20776F726C64"),
+    (" x ", "207820"),
+    ("   ", "202020"),
+], ids=["two_words", "outer_spaces", "spaces_only"])
+def test_text_field_is_sent_in_hexadecimal(play_text, typed, sent):
+    async def scenario(rig, pilot, app):
+        app.query_one("#arg-n", Input).value = typed
+        await send(pilot)
+        assert rig.requests() == [f"command=CMD x=3 n={sent}"]
+
+    play_text(scenario)
+
+
+def test_text_error_sends_nothing(play_text):
+    async def scenario(rig, pilot, app):
+        app.query_one("#arg-n", Input).value = "é"
+        await send(pilot)
+        assert rig.requests() == []
+        assert text(app, "#err-n") == "n: printable ASCII characters only"
+
+    play_text(scenario)
+
+
+@pytest.mark.parametrize("typed, sent", [
+    ("Hello world", "48656C6C6F20776F726C64"),
+    (" x ", "207820"),
+    ("é", "C3A9"),
+], ids=["two_words", "outer_spaces", "rejected_by_the_typed_form"])
+def test_free_form_shows_typed_text_in_hexadecimal(play_text, typed, sent):
+    async def scenario(rig, pilot, app):
+        app.query_one("#arg-n", Input).value = typed
+        await check_free(pilot, app)
+        assert app.query_one("#free-line", Input).value == f"x=3 n={sent}"
+        await send(pilot)
+        assert rig.requests() == [f"command=CMD x=3 n={sent}"]
+
+    play_text(scenario)
+
+
+def test_free_form_shows_default_text_in_hexadecimal(play_text):
+    """Free form chosen before the command: the line starts from the defaults."""
+
+    async def scenario(rig, pilot, app):
+        await select(pilot, app, "OTHER")
+        await check_free(pilot, app)
+        await select(pilot, app, "CMD")
+        assert app.query_one("#free-line", Input).value == "x=3 n=48656C6C6F"
+
+    play_text(scenario)
 
 
 @pytest.mark.parametrize("answer", ["no", "escape", "enter"])

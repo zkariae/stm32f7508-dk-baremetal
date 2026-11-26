@@ -5,12 +5,12 @@ table (protocol.md section 6.3). Each new command adds its name here; the
 smoke and CAPS tests derive their expected values from this list. The QSPI
 values are those of the board's flash and of protocol.md sections 6.6 to 6.10.
 The LCD values are those of the board's RK043FN48H panel and of protocol.md
-sections 6.11 to 6.19, 6.23 and 6.24; the pin table comes from the alternate function
+sections 6.11 to 6.19 and 6.23 to 6.25; the pin table comes from the alternate function
 mapping of the STM32F750x8 datasheet [N6], not from the firmware. The touch
 values are those of the FT5336 registers in the ST driver [N8].
 
-Version: 1.6
-Date: 20/11/2026
+Version: 1.7
+Date: 25/11/2026
 Author: Z. BEN-AKKA
 History:
   1.0  27/10/2026  Initial version.
@@ -20,6 +20,7 @@ History:
   1.4  20/11/2026  Add TOUCH_ID, TOUCH_READ and the touch values (protocol 1.4).
   1.5  20/11/2026  Add LCD_CIRCLE and its radius limits (protocol 1.4).
   1.6  20/11/2026  Add LCD_LINE and its radius limit (protocol 1.4).
+  1.7  25/11/2026  Add LCD_TEXT, its data limit and its cell size (protocol 1.5).
 """
 
 COMMANDS = [
@@ -27,7 +28,8 @@ COMMANDS = [
     "QSPI_ID", "QSPI_READ", "QSPI_ERASE", "QSPI_WRITE",
     "GPIO_CONFIG", "LCD_INIT", "LCD_CLOCK", "LCD_TIMING",
     "LCD_LAYER", "LCD_SCAN", "LCD_FILL", "LCD_PIXEL",
-    "LCD_CIRCLE", "LCD_LINE", "TOUCH_ID", "TOUCH_READ",
+    "LCD_CIRCLE", "LCD_LINE", "LCD_TEXT", "TOUCH_ID",
+    "TOUCH_READ",
 ]
 
 QSPI_JEDEC_ID = 0x0018BA20      # N25Q128A, protocol.md section 6.7
@@ -68,6 +70,9 @@ LCD_HEIGHT = 272
 LCD_RADIUS_MIN = 1              # LCD_CIRCLE radius, section 6.23
 LCD_RADIUS_MAX = 100
 LCD_LINE_RADIUS_MAX = 20        # LCD_LINE radius, section 6.24
+LCD_TEXT_DATA_MAX = 20          # Characters per LCD_TEXT, section 6.25
+LCD_CELL_WIDTH = 8              # Pixels of one character
+LCD_CELL_HEIGHT = 16
 
 TOUCH_CHIP_ID = 0x51            # FT5336 register 0xA8, section 6.21 ([N8])
 TOUCH_MAX_POINTS = 5            # TD_STATUS limit, section 6.20 ([N8])

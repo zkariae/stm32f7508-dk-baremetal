@@ -5,8 +5,8 @@
 \brief      Minimal HIL protocol constants for the bench firmware.
 
 \author     Z. BEN-AKKA
-\version    1.8
-\date       20/11/2026
+\version    1.10
+\date       25/11/2026
 
 \details
   Defines the fixed UART, record, key and readiness-banner values shared by
@@ -25,6 +25,8 @@
 | 1.6     | 20/11/2026 | Z. BEN-AKKA | Protocol 1.4: TOUCH_ID and TOUCH_READ command names. |
 | 1.7     | 20/11/2026 | Z. BEN-AKKA | Protocol 1.4: LCD_CIRCLE name, radius key and limits. |
 | 1.8     | 20/11/2026 | Z. BEN-AKKA | Protocol 1.4: LCD_LINE name, end point keys and radius limit. |
+| 1.9     | 25/11/2026 | Z. BEN-AKKA | Protocol 1.5: LCD_TEXT keys, font names and data limit; fw 1.5.0. |
+| 1.10    | 25/11/2026 | Z. BEN-AKKA | Protocol 1.5: LCD_TEXT command name. |
 ****************************
 */
 
@@ -38,8 +40,8 @@
 
 /* ---- Protocol version (section 3) -------------------------------------- */
 #define HIL_PROTO_VERSION_MAJOR 1u
-#define HIL_PROTO_VERSION_MINOR 4u
-#define HIL_PROTO_VERSION_STR   "1.4"
+#define HIL_PROTO_VERSION_MINOR 5u
+#define HIL_PROTO_VERSION_STR   "1.5"
 
 /* ---- Line framing (section 2.2) ---------------------------------------- */
 /** Maximum line length in bytes, excluding the terminator. */
@@ -116,7 +118,7 @@
 #define HIL_GPIO_PORT_LAST  'K'
 #define HIL_GPIO_PIN_MAX    15u
 
-/* ---- LCD keys and limits (sections 6.12 to 6.19, 6.23 and 6.24) -------- */
+/* ---- LCD keys and limits (sections 6.12 to 6.19 and 6.23 to 6.25) ------ */
 #define HIL_KEY_PLLSAI   "pllsai"
 #define HIL_KEY_PIXEL_HZ "pixel_hz"
 #define HIL_KEY_HSW      "hsw"
@@ -141,8 +143,12 @@
 #define HIL_KEY_Y0       "y0"
 #define HIL_KEY_X1       "x1"
 #define HIL_KEY_Y1       "y1"
+#define HIL_KEY_FONT     "font"
+#define HIL_KEY_BG       "bg"
 #define HIL_PLLSAI_LOCKED "locked"
 #define HIL_PLLSAI_OFF    "off"
+#define HIL_LCD_FONT_1BPP "1bpp"
+#define HIL_LCD_FONT_4BPP "4bpp"
 /** Measurement window of LCD_SCAN, in milliseconds. */
 #define HIL_LCD_SCAN_MS_MIN 100u
 #define HIL_LCD_SCAN_MS_MAX 1000u
@@ -155,6 +161,8 @@
 #define HIL_LCD_LINE_RADIUS_MAX 20u
 /** Largest distance between two disc centres of LCD_LINE, on each axis. */
 #define HIL_LCD_LINE_STEP 2
+/** Most characters in one LCD_TEXT. */
+#define HIL_LCD_TEXT_DATA_MAX 20u
 
 /* ---- Touch keys and limits (sections 6.20 to 6.22) --------------------- */
 #define HIL_KEY_CHIP_ID "chip_id"
@@ -190,6 +198,7 @@
 #define HIL_CMD_LCD_PIXEL    "LCD_PIXEL"
 #define HIL_CMD_LCD_CIRCLE   "LCD_CIRCLE"
 #define HIL_CMD_LCD_LINE     "LCD_LINE"
+#define HIL_CMD_LCD_TEXT     "LCD_TEXT"
 #define HIL_CMD_TOUCH_ID     "TOUCH_ID"
 #define HIL_CMD_TOUCH_READ   "TOUCH_READ"
 #define HIL_CAPS_TOTAL_MIN   2u
@@ -220,7 +229,7 @@
 #define HIL_FW_NAME         "hil-bench"
 
 /* Readiness banner values (protocol section 4.1). */
-#define HIL_FW_VERSION      "1.4.0"
+#define HIL_FW_VERSION      "1.5.0"
 #define HIL_RESET_UNKNOWN   "unknown"
 
 #endif /* HIL_PROTOCOL_H */

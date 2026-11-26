@@ -5,11 +5,11 @@
 \brief      GPIO_CONFIG and LCD commands of the HIL protocol firmware.
 
 \author     Z. BEN-AKKA
-\version    1.2
-\date       20/11/2026
+\version    1.3
+\date       25/11/2026
 
 \details
-  Implements protocol.md sections 6.11 to 6.19, 6.23 and 6.24.
+  Implements protocol.md sections 6.11 to 6.19 and 6.23 to 6.25.
   - GPIO_CONFIG reads MODER, AFR and IDR of one pin, after enabling the
     clock of its port; it works without LCD_INIT.
   - LCD_INIT runs the steps of section 6.13 in order. Until it succeeds the
@@ -23,6 +23,8 @@
   - LCD_LINE checks every argument, then draws discs from one end to the
     other at most 2 pixels apart, as stroke() of the 10-touch-paint
     application; 32-bit divisions only, rounded toward zero.
+  - LCD_TEXT checks every argument, then draws the characters with
+    TextString(), which clips them to the framebuffer.
   The framebuffer is the only object of the .framebuffer section, so it
   starts at 0x20010000, the first SRAM address (section 6.12).
 
@@ -32,6 +34,7 @@
 | 1.0     | 29/10/2026 | Z. BEN-AKKA | Initial version. |
 | 1.1     | 20/11/2026 | Z. BEN-AKKA | Add LCD_CIRCLE. |
 | 1.2     | 20/11/2026 | Z. BEN-AKKA | Add LCD_LINE. |
+| 1.3     | 25/11/2026 | Z. BEN-AKKA | Add LCD_TEXT. |
 ****************************
 */
 
@@ -43,10 +46,12 @@
 #include "defines.h"
 #include "delay/delay.h"
 #include "fb/fb.h"
+#include "font/font.h"
 #include "gpio/gpio.h"
 #include "hil_protocol.h"
 #include "ltdc/ltdc.h"
 #include "rcc/rcc.h"
+#include "text/text.h"
 
 #define CFGR_SWS_PLL       (2U << 2)     ///< RCC_CFGR SWS: SYSCLK from the main PLL.
 #define PLLCFGR_SRC_HSE    (1U << 22)    ///< RCC_PLLCFGR PLLSRC: HSE input.
@@ -367,5 +372,69 @@ const char *LcdLineCmd(const CommandArg *args, uint32_t count, Record *result)
     FbCircle(&screen, sx + dx * i / steps, sy + dy * i / steps, (int32_t)radius, (uint16_t)color);
   }
   FbCircle(&screen, (int32_t)x1, (int32_t)y1, (int32_t)radius, (uint16_t)color);
+  return NULL;
+}
+
+/*!
+\brief  Font of an LCD_TEXT font name; NULL for an unknown name.
+*/
+static const Font *FindFont(const char *name)
+{
+  if (RecordStrEq(name, HIL_LCD_FONT_1BPP)) {
+    return &FONT_MONO_8X16_1BPP;
+  }
+  if (RecordStrEq(name, HIL_LCD_FONT_4BPP)) {
+    return &FONT_MONO_8X16_4BPP;
+  }
+  return NULL;
+}
+
+/*!
+\brief  1 if every byte is a character of the fonts, 0x20 to 0x7E (section 6.25).
+*/
+static int IsPrintable(const uint8_t *data, uint32_t len)
+{
+  for (uint32_t i = 0u; i < len; ++i) {
+    if (data[i] < HIL_CHAR_MIN || data[i] > HIL_CHAR_MAX) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+const char *LcdTextCmd(const CommandArg *args, uint32_t count, Record *result)
+{
+  const char *x_text = CommandFindArg(args, count, HIL_KEY_X);
+  const char *y_text = CommandFindArg(args, count, HIL_KEY_Y);
+  const char *font_text = CommandFindArg(args, count, HIL_KEY_FONT);
+  const char *color_text = CommandFindArg(args, count, HIL_KEY_COLOR);
+  const char *bg_text = CommandFindArg(args, count, HIL_KEY_BG);
+  const char *data_text = CommandFindArg(args, count, HIL_KEY_DATA);
+  uint8_t data[HIL_LCD_TEXT_DATA_MAX];
+  TextPalette palette;
+  uint32_t x;
+  uint32_t y;
+  uint32_t color;
+  uint32_t bg;
+
+  (void)result;
+  if (!lcd_ready) {
+    return HIL_ERR_BUSY;
+  }
+  if (count != 6u || x_text == NULL || y_text == NULL || font_text == NULL || color_text == NULL ||
+      bg_text == NULL || data_text == NULL || !RecordParseDec(x_text, LCD_WIDTH - 1u, &x) ||
+      !RecordParseDec(y_text, LCD_HEIGHT - 1u, &y) || RecordStrLen(color_text) > COLOR_TEXT_MAX ||
+      !RecordParseHex32(color_text, &color) || RecordStrLen(bg_text) > COLOR_TEXT_MAX ||
+      !RecordParseHex32(bg_text, &bg)) {
+    return HIL_ERR_INVALID_ARGUMENT;
+  }
+  const Font *font = FindFont(font_text);
+  const uint32_t n = RecordParseHexBytes(data_text, data, HIL_LCD_TEXT_DATA_MAX);
+
+  if (font == NULL || n == 0u || !IsPrintable(data, n)) {
+    return HIL_ERR_INVALID_ARGUMENT; // Before any pixel is written (section 6.25)
+  }
+  TextPaletteInit(&palette, (uint16_t)color, (uint16_t)bg);
+  TextString(&screen, x, y, font, &palette, data, n);
   return NULL;
 }
