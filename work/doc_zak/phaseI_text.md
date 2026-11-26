@@ -5,8 +5,8 @@
 \brief      Phase I: text on the LCD, 11-text-console run in place and the HIL text command.
 
 \author     Z. BEN-AKKA
-\version    1.1
-\date       25/11/2026
+\version    1.2
+\date       26/11/2026
 
 \details
   Reference document of phase I. It records the frozen acceptance criteria,
@@ -20,6 +20,7 @@
 |:-------:|:----------:|:------------|:----------------------------------------------------|
 | 1.0     | 24/11/2026 | Z. BEN-AKKA | Initial version.                                    |
 | 1.1     | 25/11/2026 | Z. BEN-AKKA | Lot 1 proofs; decisions A to C; verified values.    |
+| 1.2     | 26/11/2026 | Z. BEN-AKKA | Lot 2 proofs; decision D; text type of the TUI.     |
 ****************************
 -->
 
@@ -98,6 +99,7 @@ dev/apps/11-text-console/
 tests/protocol.md                Protocol 1.5: section 6.25
 tests/firmware/hil_bench/        LCD_TEXT handler, names, keys and limits
 tests/host/                      commands.yaml, expected.py, cases/test_text.py, catalogue check
+tests/host/tui/                  Catalogue type `text`: form and its tests
 ```
 
 Design choices of 24/11/2026, completed by decisions A to C (section 9.1):
@@ -155,8 +157,11 @@ END id=22
 | Blending | Formula and rounding are normative, so that the host computes the expected pixels by itself |
 | `CAPS` | After `LCD_LINE`: 21 names, pages 8 + 7 + 6 (algorithm of `commands.c` replayed for IDs 1, 99 and 65535) |
 
-The catalogue types `int`, `enum`, `color` and `hexdata` are enough: no new
-TUI code.
+The TUI has a new catalogue type, `text` (decided on 25/11/2026, it replaces
+the plan of 24/11/2026 without new TUI code): the operator types printable
+ASCII, spaces kept, and the TUI sends it in hexadecimal (`wire_text` in
+`core/catalog.py`). The free form shows the hexadecimal. The `data` field of
+`LCD_TEXT` in `commands.yaml` has this type, with the default value `Hello`.
 
 ## 5. Sources
 
@@ -183,21 +188,21 @@ Verified since 24/11/2026:
 | JetBrains Mono | v2.304, published on 14/01/2023, `https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip`, sha256 `6f6376c6ed2960ea8a963cd7387ec9d76e3f629125bc33d1fdcd7eb7012f7bbf`; `JetBrainsMono-Regular.ttf` sha256 `a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f` |
 | License | OFL 1.1, no reserved font name declared; `OFL.txt` copied unmodified. A delivered binary comes with it |
 | 8 × 16 cell | No glyph cut, empty or identical among the 95, checked by `ttf2c.py` |
+| Duration of `test_text.py` on the board | About 40 s: its 44 `LCD_TEXT` requests from 11:16:14 to 11:16:54 in `work/hil-results/pytest.log` of 26/11/2026 |
 
-NOT VERIFIED on 25/11/2026:
+NOT VERIFIED on 26/11/2026:
 
 | Item | Checked at |
 |:--|:--|
 | Cause of the stray reception at the first opening of the port after a flash (section 10.1) | — |
 | Why both formats take the same time (assumed: `text.c` reads one glyph byte per pixel) | — |
-| Duration of the pixel read-back in `test_text.py` | TE7 |
 
 ## 6. Issues and labels
 
 | Issue | Content |
 |:--|:--|
 | #134, `enhancement` | Lot 1: I1 to I19, C1 to C8 |
-| #135, `enhancement` and `paused` | Lot 2: TE0 to TE8, C9 to C12; `paused` until decision D |
+| #135, `enhancement` | Lot 2: TE1 to TE8 and TA1 to TA5, C9 to C12; `paused` removed on 25/11/2026 (decision D) |
 | #136, `bug` | `UartInit` writes `USART_BRR` with the USART enabled |
 
 Each pull request carries its label and `Refs #n`. Each lot issue is closed
@@ -212,8 +217,9 @@ The rules of `ci/README.md` section 9 apply, with these additions:
 - The plan of each sub-step is validated before its sub-branch exists. The
   result is shown before the commit.
 - Exception, validated: TE6 is one sub-branch with five commits, one per file
-  (`hil_protocol.h`, `commands.yaml`, `commands.c`, `expected.py`,
-  `test_catalog.py`), because `test_catalog.py` and CAPS tie the names.
+  in this order: `hil_protocol.h`, `commands.c`, `commands.yaml`,
+  `expected.py`, `test_catalog.py`, because `test_catalog.py` and CAPS tie the
+  names.
 - Exceptions, validated on 25/11/2026: one pull request for I6 to I9 (#143) and
   one for I10 to I18 (#144), from stacked sub-branches, one file per commit.
 - The developer runs every check on the board. A check counts as passed once
@@ -231,17 +237,22 @@ The rules of `ci/README.md` section 9 apply, with these additions:
 
 ## 8. Release
 
-| Situation after I19 (decision D) | Order | Release |
+Decision D, taken on 25/11/2026: phase H part 2 (#105) had not started, so
+lot 2 comes now, before it. Release `v0.7.0`, both lots,
+`fw=1.5.0 proto=1.5`. TE0 was not needed: develop had not moved since
+`a851989`. The other two situations considered at I19:
+
+| Situation after I19 | Order | Release |
 |:--|:--|:--|
-| Phase H part 2 (#105) not started | Lot 2 now; the phase H session is told before TE1 | `v0.7.0`, both lots, `fw=1.5.0 proto=1.5` |
 | Part 2 in progress | Lot 1 alone; lot 2 after phase H is in develop (TE0) | `v0.7.0`, `fw=1.4.0 proto=1.4`; lot 2 in a later tag |
 | Phase H already in develop | Lot 2 after TE0 | `v0.8.0` if `v0.7.0` is taken |
 
-Lot 2 is never merged into develop while phase H part 2 is in progress: its board
-total (H4) is re-based on develop at the start of part 2. Answer of the
-phase H session on 24/11/2026: no date, part 2 starts after the `v0.1.0` tag
-of `hil-host`; the place of the `LCD_AFTER_INIT` check after part 2 is not
-decided.
+The phase H session was told before TE1, including the new TUI type `text`.
+It works in a separate repository and has not changed `tests/`. It is still
+to receive the rules of the `text` type, the merge commit and the HIL and TUI
+totals once lot 2 is in develop. Answer of the phase H session on 24/11/2026:
+no date, part 2 starts after the `v0.1.0` tag of `hil-host`; the place of
+the `LCD_AFTER_INIT` check after part 2 is not decided.
 
 The tags are read again just before the release. Steps, each at the
 developer's request: integration → `develop`, `develop` → `main`, annotated
@@ -283,25 +294,36 @@ One file per sub-step, in this order. Every commit compiles.
 
 | # | File | Content | Criteria |
 |:-:|:--|:--|:--|
-| **D** | Decision | Before or after phase H part 2 (section 8) | — |
-| TE0 | Synchronisation of develop | Only after phase H | C12 |
+| **D** | Decision, taken on 25/11/2026 | Lot 2 before phase H part 2 (section 8) | — |
+| TE0 | Synchronisation of develop | Not needed (section 8) | C12 |
 | TE1 | `tests/protocol.md` 1.14 | `LCD_TEXT`, section 6.25; future commands in 6.26 | C9, C10 |
-| TE2 | `tests/firmware/hil_bench/inc/hil_protocol.h` | Protocol 1.5, fw 1.5.0, keys and limits | C11 |
-| TE3 | `tests/firmware/hil_bench/inc/lcd_commands.h` | Handler declaration | C9 |
-| TE4 | `Makefile` | Modules `font text` in `hil-bench` | C7, C12 |
-| TE5 | `tests/firmware/hil_bench/lcd_commands.c` | Handler | C9, C10 |
-| TE6 | `hil_protocol.h`, `commands.yaml`, `commands.c`, `expected.py`, `test_catalog.py` | Name everywhere (exception, 5 commits). After phase H: the file that took over the `LCD_AFTER_INIT` check | C11 |
-| TE7 | `tests/host/hil/cases/test_text.py` | Marker `lcd`; about 25 cases | C9, C10 |
-| TE8 | `work/doc_zak/phaseI_text.md` | Lot 2 proofs | — |
+| TE2 | `tests/firmware/hil_bench/inc/hil_protocol.h` 1.9 | Protocol 1.5, fw 1.5.0, keys and limits | C11 |
+| TE3 | `tests/firmware/hil_bench/inc/lcd_commands.h` 1.3 | Handler declaration | C9 |
+| TE4 | `Makefile` 1.19 | Modules `font text` in `hil-bench` | C7, C12 |
+| TE5 | `tests/firmware/hil_bench/lcd_commands.c` 1.3 | Handler | C9, C10 |
+| TA1 | `tests/host/tui/core/catalog.py` 1.1 | Type `text`: printable ASCII, sent in hexadecimal | C11 |
+| TA2 | `tests/host/tui/ui/commands_pane.py` 1.1 | Form of the `text` type; free line in hexadecimal | C11 |
+| TA3 | `tests/host/tui/tests/test_catalog.py` 1.3 | 15 cases for the `text` type | C11 |
+| TA4 | `tests/host/tui/tests/test_ui_commands.py` 1.3 | 9 cases for the form | C11 |
+| TA5 | `tests/host/tui/README.md` 1.3 | Type `text` documented | — |
+| TE6 | `hil_protocol.h` 1.10, `commands.c` 1.7, `commands.yaml` 1.4, `expected.py` 1.7, `test_catalog.py` 1.4 | Name everywhere (exception, 5 commits) | C11 |
+| TE7 | `tests/host/hil/cases/test_text.py` 1.0 | Marker `lcd`; 44 cases | C9, C10 |
+| TE8 | `work/doc_zak/phaseI_text.md` 1.2 | Lot 2 proofs | — |
 
-`test_text.py`: `BUSY` before `LCD_INIT` (1), five glyphs (space, `@`, `W`,
-`g`, `{`) in both formats with the neighbouring pixels (10), a string of three
-characters in both formats (2), clipping on the right and at the bottom (2),
-rejected requests (10). The expected pixels come from the generated headers:
-the test proves the drawing, C1 and C2 prove the font.
+`test_text.py` (44 cases): `BUSY` before `LCD_INIT` (1); five glyphs (space,
+`@`, `W`, `g`, `~`) in both formats, with the neighbouring pixels (10); the
+blending with light on dark and dark on light (2); a string of three
+characters in both formats (2); the longest request, 20 characters (1);
+clipping on the right, at the bottom and in the corner (3); lowercase
+hexadecimal accepted (1); rejected requests, each one with the framebuffer
+checked unchanged (24). The colours are screen `0x07E0`, text `0xFD20` and
+background `0x0411`, at (101, 57). The expected pixels come from the generated
+headers: the test proves the drawing, C1 and C2 prove the font.
 
-HIL total after lot 2, to be counted again: about 279 collected (237 on the
-board and 42 unit) before phase H, about 237 after it.
+HIL total after lot 2: 298 collected (256 on the board and 42 unit), 290
+passed and 8 skipped on the board without `HIL_OPERATOR`. After phase H, about
+256 (estimate, NOT VERIFIED). TUI: 377 passed without the board; 25 tests that
+need the board were not run.
 
 ## 10. Proofs
 
@@ -370,4 +392,32 @@ Observations:
 
 ### 10.2 Lot 2
 
-At TE8.
+Recorded on 26/11/2026, lot 2 at `d860891` (TE7), stacked on the integration
+branch `a036014`, local commits not pushed yet. The board ran `hil-bench`
+`build=812ea4e fw=1.5.0 proto=1.5` (TE6), the same firmware as at TE7: TE7
+only adds a host test. The developer flashed and ran every board check.
+
+| # | Proof | Result |
+|:-:|:--|:--|
+| C9, C10 | `LcdTextCmd` and `text.c` compiled on the PC against an independent model (sanitizers on) | 0 difference in 3000 requests; 34 of 34 wrong variants detected |
+| C9, C10 | `test_text.py` replayed against the whole `hil-bench` compiled for the PC (simulated registers, virtual port, reset by signal) | 44 passed; 34 of 34 wrong variants of `lcd_commands.c` and `text.c` detected, and the one equivalent variant not detected, as intended |
+| C9, C10 | `pytest` on the board, whole suite | "All passed" (reported by the developer). `work/hil-results/pytest.log`, 11:15:45 to 11:16:55: the 44 requests of `test_text.py` sent and answered; the counts are not in the log (NOT VERIFIED) |
+| C11 | `CAPS` of the board, in the same log | `total=21`, third page from `start=15`: `LCD_PIXEL,LCD_CIRCLE,LCD_LINE,LCD_TEXT,TOUCH_ID,TOUCH_READ` |
+| C11 | `CAPS` of the PC build for IDs 1, 99 and 65535 | 21 names, pages 8 + 7 + 6; longest lines 122, 126 and 108 bytes, within 128 |
+| C11 | `LCD_TEXT` with miniterm and in the TUI on the board (TE6) | Conform (reported by the developer, no output copied) |
+| C11 | TUI tests without the board | 377 passed, 25 board tests not run; 21 of 21 wrong variants detected by TA3, 11 of 11 by TA4 |
+| C12 | Size of `hil-bench`, at TE6 and again at `d860891` | Text 21180 bytes, 32 % of the 64 KB of internal flash (12645 bytes before phase I) |
+| C12 | `make clean`, `make all`, `sha256sum -c` at `d860891` | 16 of 16 other images unchanged |
+| C12 | Required check `continuous-integration/jenkins/pr-merge` (suites, T1–T8) | Not run yet: lot 2 has no pull request (NOT VERIFIED) |
+
+Observations:
+
+- The first TUI trial at TE6 showed `LCD_TEXT` "not in the catalogue": the
+  TUI had been started from the phase H folder. Started again from the
+  phase I folder, the form was conform.
+- The replay of TE7 first found three holes: a background longer than six
+  digits, and the `font` and `bg` keys renamed. Three cases were added,
+  then every variant was detected.
+- The miniterm output of TE2 and TE6 and the pytest summary lines were not
+  copied.
+- Programs of the PC checks: outside the repository, not kept.
